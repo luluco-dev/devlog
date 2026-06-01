@@ -119,46 +119,70 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* Markdown */
-    #rendered h3 { font-size: 16px; font-weight: 600; margin: 28px 0 10px; }
-    #rendered h4 { font-size: 14px; font-weight: 600; margin: 20px 0 8px; }
-    #rendered p  { font-size: 14px; line-height: 1.75; margin-bottom: 10px; }
+    #rendered h3 {
+      font-size: 16px; font-weight: 600; margin: 32px 0 12px;
+      padding-left: 10px; border-left: 3px solid #0969da;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    #rendered h4 { font-size: 14px; font-weight: 600; margin: 20px 0 8px; color: #444d56; }
+    #rendered p  { font-size: 14px; line-height: 1.8; margin-bottom: 12px; }
     #rendered ul, #rendered ol { padding-left: 22px; margin-bottom: 12px; }
-    #rendered li { font-size: 14px; line-height: 1.75; margin-bottom: 3px; }
+    #rendered li { font-size: 14px; line-height: 1.8; margin-bottom: 4px; }
     #rendered li > ul, #rendered li > ol { margin-top: 4px; margin-bottom: 4px; }
     #rendered code {
       font-family: 'Consolas', 'Courier New', monospace;
-      font-size: 12px;
-      background: #f6f8fa;
-      border: 1px solid #d0d7de;
-      border-radius: 4px;
-      padding: 1px 5px;
-      color: #cf222e;
+      font-size: 12px; background: #f6f8fa;
+      border: 1px solid #d0d7de; border-radius: 4px;
+      padding: 1px 5px; color: #cf222e;
     }
     #rendered pre {
-      background: #1e2228;
-      border-radius: 6px;
-      padding: 16px 18px;
-      overflow-x: auto;
-      margin-bottom: 16px;
+      background: #1e2228; border-radius: 6px;
+      padding: 16px 18px; overflow-x: auto; margin-bottom: 16px;
     }
-    #rendered pre code {
-      background: none; border: none; padding: 0;
-      color: #e6edf3; font-size: 12px;
-    }
+    #rendered pre code { background: none; border: none; padding: 0; color: #e6edf3; font-size: 12px; }
     #rendered strong { font-weight: 600; }
-    #rendered hr { border: none; border-top: 1px solid #d0d7de; margin: 20px 0; }
+    #rendered hr { border: none; border-top: 1px solid #d0d7de; margin: 24px 0; }
     #rendered table { border-collapse: collapse; width: 100%; margin-bottom: 16px; font-size: 13px; }
     #rendered th, #rendered td { border: 1px solid #d0d7de; padding: 8px 12px; text-align: left; }
     #rendered th { background: #f6f8fa; font-weight: 600; }
     #rendered tr:nth-child(even) td { background: #f6f8fa; }
     #rendered a { color: #0969da; }
-    #rendered img { max-width: 100%; border-radius: 6px; margin: 8px 0; border: 1px solid #d0d7de; }
-    #rendered blockquote {
-      border-left: 4px solid #d0d7de;
-      padding: 6px 14px;
-      color: #656d76;
-      margin-bottom: 12px;
+    #rendered img {
+      max-width: 100%; border-radius: 8px; margin: 12px 0 4px;
+      border: 1px solid #d0d7de; cursor: zoom-in;
+      transition: box-shadow .15s;
     }
+    #rendered img:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+    #rendered blockquote {
+      border-left: 4px solid #d0d7de; padding: 6px 14px;
+      color: #656d76; margin-bottom: 12px;
+    }
+
+    /* 이미지 캡션 */
+    .img-caption {
+      display: block; text-align: center; font-size: 12px;
+      color: #656d76; margin: 0 0 16px; font-style: italic;
+    }
+
+    /* 섹션 뱃지 */
+    .sec-badge {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: 10px; line-height: 1.6;
+    }
+
+    /* 라이트박스 */
+    #lightbox {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.88); z-index: 1000;
+      align-items: center; justify-content: center; cursor: zoom-out;
+    }
+    #lightbox.active { display: flex; }
+    #lightbox img { max-width: 92%; max-height: 92vh; border-radius: 10px; }
+    #lightbox-close {
+      position: absolute; top: 16px; right: 20px; color: #fff;
+      font-size: 28px; cursor: pointer; line-height: 1; opacity: .7;
+    }
+    #lightbox-close:hover { opacity: 1; }
   </style>
 </head>
 <body>
@@ -169,6 +193,12 @@
     <div class="spacer"></div>
     <span id="status"></span>
     <button id="refresh-btn" onclick="fetchDevLog()">↺ 새로고침</button>
+  </div>
+
+  <!-- 라이트박스 -->
+  <div id="lightbox">
+    <span id="lightbox-close" onclick="closeLightbox()">✕</span>
+    <img id="lb-img" src="" alt="">
   </div>
 
   <div id="layout">
@@ -266,6 +296,60 @@
     const cleaned = (sections[date] || '').replace(/^---\s*$/gm, '').trim();
     document.getElementById('rendered').innerHTML = marked.parse(cleaned);
     document.getElementById('content-area').scrollTop = 0;
+    addCaptions();
+    addSectionBadges();
+  }
+
+  // ── 이미지 캡션 (alt 텍스트 → 이미지 아래 설명) ──
+  function addCaptions() {
+    document.querySelectorAll('#rendered img').forEach(img => {
+      if (!img.alt) return;
+      if (img.nextSibling?.classList?.contains('img-caption')) return;
+      const cap = document.createElement('span');
+      cap.className = 'img-caption';
+      cap.textContent = img.alt;
+      img.after(cap);
+    });
+  }
+
+  // ── 섹션 뱃지 (h3 키워드 자동 감지) ──────────────
+  const BADGE_MAP = [
+    { keys: ['결정','확정'],       color:'#0969da', bg:'#ddf4ff' },
+    { keys: ['탐구','비교','조사'], color:'#8250df', bg:'#fbefff' },
+    { keys: ['구현','신규','개발'], color:'#1a7f37', bg:'#dcfce7' },
+    { keys: ['수정','버그','Fix'],  color:'#cf222e', bg:'#fff0ee' },
+    { keys: ['개선','리팩','최적'], color:'#9a6700', bg:'#fdf8e1' },
+    { keys: ['설계','아키','분리'], color:'#0550ae', bg:'#e8f3ff' },
+  ];
+  function addSectionBadges() {
+    document.querySelectorAll('#rendered h3').forEach(h3 => {
+      if (h3.querySelector('.sec-badge')) return;
+      const text = h3.textContent;
+      for (const { keys, color, bg } of BADGE_MAP) {
+        if (keys.some(k => text.includes(k))) {
+          const badge = document.createElement('span');
+          badge.className = 'sec-badge';
+          badge.textContent = keys[0];
+          badge.style.cssText = `color:${color};background:${bg};border:1px solid ${color}33;`;
+          h3.prepend(badge);
+          break;
+        }
+      }
+    });
+  }
+
+  // ── 라이트박스 ────────────────────────────────────
+  document.addEventListener('click', e => {
+    if (e.target.tagName === 'IMG' && e.target.closest('#rendered')) {
+      document.getElementById('lb-img').src = e.target.src;
+      document.getElementById('lightbox').classList.add('active');
+    }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeLightbox();
+  });
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
   }
 
   // ── Helpers ──────────────────────────────────────
