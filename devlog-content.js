@@ -1530,4 +1530,51 @@ v0.1의 기본 기능 위에 비주얼 다듬기와 그룹 노드 기능을 추�
 
 ---
 
+## 2026-06-23
+
+### Scene Graph Tool v7 — Addressable 연동 + Insignia 비주얼
+
+v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데이터 구조, 노드 비주얼 개선을 진행했다.
+
+### 데이터 구조 변경
+
+- **SceneMeta에 \`AddressableAddress\` 필드 추가**: Addressable Groups에 등록된 주소를 SceneMeta가 캐싱. 런타임에서 \`SceneTransitionManager\`가 주소로 씬을 로드할 때 SceneMeta를 통해 조회 가능.
+- **SceneGroupRuntime 클래스 신규 생성**: 기존 에디터 전용 \`SceneGroupData\`를 \`SceneGroupEditorData\`(에디터)와 \`SceneGroupRuntime\`(런타임)으로 분리. 런타임 그룹은 \`SceneInstanceCollection\`에 소속되어 빌드에 포함됨.
+- **SceneInstanceCollection API 확장**: \`GetSceneByAddress()\`, \`TryGetSceneByAddress()\`, \`GetGroup()\`, \`GetGroupForScene()\` 등 런타임 조회 API 추가.
+- **라벨 기반 매칭**: 에디터 그룹과 런타임 그룹은 \`RuntimeLabel\` 문자열로 연결. 같은 라벨의 그룹을 자동으로 매칭.
+
+### Addressable 자동 동기화
+
+- \`AddressableSyncHandler\`(\`[InitializeOnLoad]\`): \`AddressableAssetSettings.OnModificationGlobal\` 이벤트를 구독하여 Addressable Groups에서 주소가 변경되면 SceneMeta에 자동 반영.
+- null/empty 정규화: Unity 직렬화가 null을 \`""\`로 변환하는 문제 해결. 양쪽 모두 \`string.Empty\`로 정규화하여 불필요한 dirty 방지.
+- SceneInstanceCollection 인스펙터에 "Sync Addressable Addresses" 수동 버튼도 추가.
+
+### 노드 비주얼 (Insignia 스타일)
+
+- 각진 모서리 (\`border-radius: 0\`), 보라색 헤더, 두꺼운 아웃라인 적용
+- USS CSS 변수(\`--scene-node-header-bg\`, \`--scene-node-border-color\`, \`--scene-node-border-width\`)로 색상/두께 변경 용이
+- 씬 이름 좌측 정렬 (\`-unity-text-align: middle-left\`)
+
+### 기타 수정
+
+- 그룹 이름 생성 시 자동 유니크화 ("New Group", "New Group 1", ...)
+- \`SceneTransitionPointCache.GetOrScan\`에 null 체크 추가 (노드 삭제 시 MissingReferenceException 방지)
+- Registry null-conditional 처리 (\`_collection.Registry?.\`) 전면 적용
+
+### 스크린샷
+
+<img src="images/scene-graph-v7-node.png" width="500">
+<figcaption>Insignia 스타일 노드 — 각진 모서리, 보라색 헤더, 두꺼운 보더</figcaption>
+
+<img src="images/scene-graph-v7-scenemeta-window.png" width="500">
+<figcaption>SceneMetaWindow — Addressable Address 필드 표시</figcaption>
+
+<img src="images/scene-graph-v7-collection-inspector.png" width="500">
+<figcaption>SceneInstanceCollection 인스펙터 — Groups, Sync Addressable Addresses 버튼</figcaption>
+
+<img src="images/scene-graph-v7-addressable-groups.png" width="600">
+<figcaption>Addressable Groups 창 — 씬별 주소 등록 상태</figcaption>
+
+---
+
 `;
