@@ -1577,4 +1577,32 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 
 ---
 
+## 2026-06-24
+
+### Spine 애니메이션 매핑 및 상태 구현
+
+**구현 내용:**
+- Spine 애니메이션 이름 매핑 변경 (Jump_UP → Jump, Jump_Down → Fall)
+- WallGrabState 신규 구현: Climb_Grap(매달림) → Climb_Idle(대기) → Climb_UP(올라감) 3단계 분리
+- LandState 신규 구현: 착지 애니메이션 재생, 입력 시 즉시 캔슬 가능
+- 사다리(Rope) 애니메이션 매핑: 진입(GrapDown/JumpToGrap), 이동(MoveUp/MoveDown), 대기(Idle)
+- 사다리 진입 애니메이션 중 이동 차단
+- IdleState/MoveState에 낙하 감지 추가 (드롭스루 후 Fall 전환)
+- 사다리 하단 진입 조건 강화: headCheck + 메인 콜라이더 동시 감지
+
+**조사 내용:**
+- 2D 게임 Spine 애니메이션 위치 매칭 방식 조사
+  - 업계 표준: 제자리(In-Place) 애니메이션 + 코드 기반 이동
+  - Spine 공식 예제(Super Spineboy)도 root motion 미사용, 코드 이동 + skeleton 위치 수동 동기화
+  - SkeletonRootMotion 컴포넌트는 존재하지만 2D 플랫포머에서 사용 사례 거의 없음
+  - GDC 사례: Ori(3D→스프라이트 root motion), Klei/Cuphead/Skullgirls 전부 코드 이동
+  - 결론: root bone 고정 + 코드 이동이 정석, 특수 동작은 duration 동기화로 해결
+
+- 플레이어 콜라이더 구조 조사
+  - 역할별 분리가 표준: Body(물리) / Hurtbox(피격) / Hitbox(공격) / 감지용(OverlapBox)
+  - 상태별 콜라이더 교체가 아닌 역할이 다른 콜라이더가 각자 존재하는 구조
+  - 상태별 크기 변경은 Body 콜라이더 하나에서 resize로 처리
+
+---
+
 `;
