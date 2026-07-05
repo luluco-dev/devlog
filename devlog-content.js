@@ -1711,7 +1711,7 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 
 **Cinemachine Confiner2D 볼록/오목 리서치:**
 - 오목한(L자 등) 방에서 카메라가 튀는 버그는 콜라이더 타입(Box vs Polygon)이 아니라 도형의 볼록/오목 여부가 관건이라는 걸 Unity 공식 문서 + Discussions 포럼 + Corgi Engine 문서로 교차 검증
-- [실시간 캔버스 시뮬레이션 아티팩트](https://claude.ai/code/artifact/3dc1032a-0932-45d8-afd4-6cf93ff868a9)로 직접 확인 — 플레이어는 실제 벽에 막혀 노치를 침범 못 해도 카메라(뷰 프레임 기준 erosion) 쪽에서 스냅이 발생함을 시각적으로 증명, 볼록 조각 분할+Priority 전환으로 해결되는 것까지 포함
+- [실시간 캔버스 시뮬레이션 데모](https://luluco-dev.github.io/devlog/demos/confiner-convex-concave.html)로 직접 확인 — 플레이어는 실제 벽에 막혀 노치를 침범 못 해도 카메라(뷰 프레임 기준 erosion) 쪽에서 스냅이 발생함을 시각적으로 증명, 볼록 조각 분할+Priority 전환으로 해결되는 것까지 포함
 - 결론: 기본은 볼록 도형 하나로 크게, 오목할 때만 볼록 조각으로 나누고 방마다 완전한 vcam+Priority 전환이 트리거 반복 스왑보다 안전 — Zone Camera(줌/구도)와는 다른 축의 문제라 별도 정리
 
 **부가 작업:**
