@@ -1717,5 +1717,20 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 **부가 작업:**
 - \`MapEditorWindow.cs\`의 \`Debug.Log\`/\`Debug.LogWarning\` 15곳을 \`TeamPlutoLogger\`로 마이그레이션(기존 관례 미적용 상태였던 걸 이번에 정리)
 
+### GameSettings→CameraController VContainer 배선 버그 수정
+
+\`feat/hj/gamesettings-camera-di\` 브랜치. 에디터 실행 중 \`GameSettings.cameraController\`가 계속 비어있는 걸 발견해서 원인 추적.
+
+**원인/브레인스토밍:**
+- \`GameEngine\`/\`CameraRig\`가 서로 다른 프리팹으로 \`RootLifetimeScope\`에 독립 등록돼 있어, \`GameSettings.AutoFill()\`(에디터 \`Reset()\` 전용)이 프리팹 단독 편집 시점엔 다른 프리팹의 \`CameraController\`를 찾지 못해 필드가 \`{fileID: 0}\`으로 직렬화된 채 방치돼 있었음 — 런타임 재배선 로직도 없어 사실상 죽은 필드였음
+- develop이 프로토타입이 아닌 실빌드 트랙이라는 방향에 따라 static Instance 우회 대신 VContainer \`[Inject]\`로 정식 배선하기로 결정. VContainer 패키지 소스(\`PrefabComponentProvider.cs\`)로 프리팹 인스턴스화 시 주입이 항상 \`Awake()\`보다 먼저 끝난다는 것도 직접 확인
+- \`LevelScrollingBounds\`의 기존 \`CameraController.Instance\` 사용은 이번 범위에서 제외하고, "CameraController를 새로 참조하는 컴포넌트가 추가되는 시점"을 트리거 조건으로 문서화
+
+**구현 후 실제 버그 발견/수정 (systematic-debugging):**
+- \`RootLifetimeScope\`에 \`CameraController\`를 \`CameraRig\` 자식에서 꺼내는 factory 등록을 추가하고 \`GameSettings\`를 \`[Inject]\` 메서드 주입으로 전환했는데도 Play 테스트에서 여전히 None
+- VContainer 소스(\`ComponentRegistrationBuilder.cs\`, \`PrefabComponentProvider.cs\`) 재확인 결과, \`RegisterComponentInNewPrefab\`은 **등록된 루트 타입(GameEngine) 하나만** 주입하고 같은 프리팹 안의 \`GameSettings\` 같은 자식 컴포넌트는 주입 대상에서 빠진다는 걸 확인 — GameSettings가 GameEngine의 자식이라는 계층 구조를 배선 설계 때 놓친 게 근본 원인
+- \`GameEngine\`이 \`IObjectResolver\`를 주입받아 \`Awake()\`에서 \`resolver.InjectGameObject(gameObject)\`를 한 번 호출해 자기 하위 계층 전체를 재주입하도록 수정. 이 패턴은 프리팹 루트마다 개별로 필요(CameraRig 자식이 나중에 Inject가 필요해지면 CameraRig에도 동일하게 추가해야 함)하며, 동적으로 나중에 생성되는 자식에는 적용되지 않음
+- 관련 지식은 \`study/vcontainer-basics.md\` §8로 정리
+
 ---
 `;
