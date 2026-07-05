@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>왜 오목한 방에서 카메라가 튈까</title>
+<style>
+  :root {
+    --bg: #12141a;
+    --panel: #1a1e25;
+    --panel-2: #20242c;
+    --border: #2a2f3a;
+    --text: #e7e9ee;
+    --text-muted: #8d95a3;
+    --text-faint: #5b6270;
+    --safe: #5fd8ab;
+    --safe-dim: #2e5a4c;
+    --risk: #ef7a61;
+    --risk-dim: #5c3a30;
+    --fix: #7fb5e8;
+    --fix-dim: #2f4a63;
+    --grid: #242933;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    --sans: ui-sans-serif, "Segoe UI", "Pretendard", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+  }
+
+  .page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 56px 24px 80px;
+  }
+
+  header.hero {
+    margin-bottom: 48px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-size: clamp(26px, 4vw, 36px);
+    line-height: 1.25;
+    margin: 0 0 16px;
+    text-wrap: balance;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  .lede {
+    font-size: 16px;
+    color: var(--text-muted);
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  .lede code {
+    font-family: var(--mono);
+    font-size: 0.9em;
+    color: var(--text);
+    background: var(--panel-2);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  section { margin-bottom: 44px; }
+
+  h2 {
+    font-size: 13px;
+    font-family: var(--mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  h2::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .diagram-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 18px;
+  }
+
+  @media (max-width: 900px) {
+    .diagram-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 600px) {
+    .diagram-grid { grid-template-columns: 1fr; }
+  }
+
+  .room-card.fix { border-top: 2px solid var(--fix); }
+  .room-card.fix .dot { background: var(--fix); }
+
+  .room-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .room-card.safe { border-top: 2px solid var(--safe); }
+  .room-card.risk { border-top: 2px solid var(--risk); }
+
+  .room-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .room-title {
+    font-size: 14px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .room-card.safe .dot { background: var(--safe); }
+  .room-card.risk .dot { background: var(--risk); }
+
+  .room-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+
+  canvas {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    display: block;
+    border-radius: 6px;
+    background: var(--panel-2);
+  }
+  #costTimeline {
+    aspect-ratio: 8 / 3;
+  }
+
+  .cam-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text-faint);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    transition: border-left-color 0.25s ease, background 0.25s ease;
+  }
+  .cam-card.active {
+    background: #202b26;
+    border-left-color: var(--safe);
+  }
+  .cam-card .cam-name {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    font-weight: 650;
+    color: var(--text);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .cam-card .badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 8px;
+    visibility: hidden;
+  }
+  .cam-card.active .badge {
+    visibility: visible;
+    color: var(--safe);
+    border-color: var(--safe-dim);
+  }
+  .cam-card .field {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-muted);
+    padding: 3px 0;
+    border-top: 1px solid var(--border);
+  }
+  .cam-card .field:first-of-type { border-top: none; }
+  .cam-card .field .v {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .cam-card.active .field .v.priority {
+    color: var(--safe);
+    font-weight: 700;
+  }
+
+  .readout {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .readout .value {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .room-card.risk .readout .value.spike {
+    color: var(--risk);
+  }
+  .room-card.fix .readout .value.spike {
+    color: var(--fix);
+  }
+
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: 4px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 10px; height: 10px; display: inline-block; border-radius: 2px; }
+
+  .prose {
+    color: var(--text-muted);
+    font-size: 15px;
+    max-width: 68ch;
+  }
+  .prose p { margin: 0 0 14px; }
+  .prose strong { color: var(--text); font-weight: 650; }
+
+  .callout {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--safe);
+    border-radius: 8px;
+    padding: 18px 20px;
+    font-size: 14.5px;
+    color: var(--text);
+  }
+  .callout .label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--safe);
+    margin-bottom: 8px;
+    display: block;
+  }
+  .callout ul { margin: 8px 0 0; padding-left: 20px; }
+  .callout li { margin-bottom: 6px; color: var(--text-muted); }
+  .callout li strong { color: var(--text); }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+  footer a { color: var(--text-muted); }
+  footer ul { margin: 8px 0 0; padding-left: 18px; }
+  footer li { margin-bottom: 4px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .anim-note { display: inline; }
+  }
+  .anim-note { display: none; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="hero">
+    <p class="eyebrow">Level Scrolling Bounds · Confiner2D 참고 자료</p>
+    <h1>왜 오목한 방에서 카메라가 튈까</h1>
+    <p class="lede">
+      문제는 <code>PolygonCollider2D</code>냐 <code>BoxCollider2D</code>냐가 아니다.
+      경계 도형이 <strong style="color:var(--safe)">볼록(convex)</strong>인가
+      <strong style="color:var(--risk)">오목(concave)</strong>인가다.
+      아래 두 방은 같은 궤적을 따라가는 카메라를 같은 방식으로 그렸다 — 도형만 다르다.
+    </p>
+  </header>
+
+  <section>
+    <h2>Live Diagram</h2>
+    <div class="diagram-grid">
+
+      <div class="room-card safe">
+        <div class="room-head">
+          <span class="room-title"><span class="dot"></span>Room A — 사각형</span>
+          <span class="room-tag">convex</span>
+        </div>
+        <canvas id="roomA" width="400" height="300"></canvas>
+        <div class="readout">
+          <span>프레임당 카메라 이동량</span>
+          <span class="value" id="deltaA">0.0 px</span>
+        </div>
+      </div>
+
+      <div class="room-card risk">
+        <div class="room-head">
+          <span class="room-title"><span class="dot"></span>Room B — L자형, 통짜로</span>
+          <span class="room-tag">concave</span>
+        </div>
+        <canvas id="roomB" width="400" height="300"></canvas>
+        <div class="readout">
+          <span>프레임당 카메라 이동량</span>
+          <span class="value" id="deltaB">0.0 px</span>
+        </div>
+      </div>
+
+      <div class="room-card fix">
+        <div class="room-head">
+          <span class="room-title"><span class="dot"></span>Room C — 볼록 2개로 분할</span>
+          <span class="room-tag">real-world fix</span>
+        </div>
+        <canvas id="roomC" width="400" height="300"></canvas>
+        <div class="readout">
+          <span>프레임당 카메라 이동량</span>
+          <span class="value" id="deltaC">0.0 px</span>
+        </div>
+      </div>
+
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--text-faint); border-radius:50%;"></i>Player — 실제 벽에 막힌 위치, 노치 침범 불가</span>
+      <span><i style="background:#f4d35e; border-radius:50%;"></i>Camera — 뷰 프레임까지 고려해 한 번 더 clamp된 위치</span>
+      <span><i style="background:var(--panel-2); border:1px dashed var(--text-faint);"></i>경계 바깥(구조물)</span>
+      <span><i style="background:none; border:1px dashed var(--fix);"></i>Room C: 두 카메라 구역의 경계선(전환 트리거 위치)</span>
+    </div>
+    <span class="anim-note prose">애니메이션이 꺼진 환경에서는 대표 프레임(오목한 모서리를 지나는 순간)이 고정 표시됩니다.</span>
+  </section>
+
+  <section>
+    <h2>무슨 일이 일어나는가</h2>
+    <div class="prose">
+      <p>
+        여기서 중요한 건 <strong>플레이어가 벽을 넘지 않아도 이 문제가 생긴다</strong>는 점이다.
+        Confiner2D가 실제로 clamp하는 대상은 플레이어의 좌표가 아니라 <strong>카메라 뷰 사각형 전체</strong>다.
+        그래서 방 도형을 카메라 뷰 크기(가로/세로 절반)만큼 안쪽으로 깎아낸(erosion) 더 작은 영역을 기준으로 계산한다 —
+        플레이어가 서 있기엔 완전히 정상적인 벽 옆자리도, 카메라 입장에서는 "프레임이 벽 밖으로 삐져나오는" 자리라 애매 지대가 될 수 있다.
+      </p>
+      <p>
+        <strong>볼록 도형</strong>에서는 이 깎인 영역도 여전히 볼록이라 최근접점이 항상 하나로 정해지고 연속적으로 움직인다.
+        <strong>오목 도형</strong>(L자, 노치 있는 방 등)은 안쪽으로 파인 모서리 근처에서
+        "왼쪽 팔에 투영한 점"과 "아래쪽 팔에 투영한 점" 둘 다 후보가 되는데, 둘 중 더 가까운 쪽이 프레임마다 바뀔 수 있다.
+        아래 데모에서 <strong>회색 점(Player)은 항상 진짜 벽 안쪽에만 있고 노치를 절대 침범하지 않는다</strong> —
+        그런데도 <strong style="color:#f4d35e">노란 점(Camera)</strong>은 플레이어가 벽을 따라 코너 근처를 지나가는 것만으로
+        두 팔 사이를 <strong style="color:var(--risk)">순간이동하듯 건너뛴다</strong>. Room B의 이동량 수치가 튀는 순간이 바로 그 지점이다.
+      </p>
+      <p>
+        <strong style="color:var(--fix)">Room C</strong>는 실제 상용 엔진(Corgi Engine의 Rooms System)이 쓰는 방식이다.
+        L자 모양 하나를 통째로 하나의 카메라 경계로 다루지 않고, <strong>볼록한 사각형 카메라 구역 두 개로 나눈다.</strong>
+        매 프레임 "두 팔 중 뭐가 더 가까운가"를 다시 계산하는 대신, <strong>지금 어느 구역에 있는지 상태로 기억</strong>하고
+        플레이어가 실제로 그 구역을 벗어나 다른 구역에 진입할 때만(점선 위치) 전환한다 — 그리고 그 전환마저
+        Cinemachine의 카메라 블렌드로 부드럽게 잇는다. 그 결과 두 팔이 겹치는 안전 지대(점선 근처)에서 전환이 일어나도
+        이동량이 튀지 않는다.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>실제로 어떻게 배치하나 — Level Scrolling Bounds 두 개</h2>
+    <div class="prose" style="margin-bottom:16px;">
+      <p>
+        카메라를 추가하는 게 아니다. 공유 카메라(<code>PlayerVCam</code>) 하나는 그대로 두고,
+        <code>LevelScrollingBounds</code> 오브젝트를 <strong>볼록한 영역 개수만큼</strong> 나눠서 배치하면 된다.
+        각자 자기 트리거 안에서 <code>OnTriggerEnter2D</code>가 딱 한 번 발생할 때만
+        자기 <code>PolygonCollider2D</code> 모양으로 <code>CameraController.SetBounds()</code>를 부른다 — 매 프레임 재계산이 아니다.
+      </p>
+    </div>
+    <div class="room-card fix" style="max-width: 620px; margin: 0 auto;">
+      <div class="room-head">
+        <span class="room-title"><span class="dot"></span>씬 배치 스케치</span>
+        <span class="room-tag">static</span>
+      </div>
+      <canvas id="placement" width="400" height="300"></canvas>
+    </div>
+    <div class="legend" style="justify-content:center;">
+      <span><i style="background:rgba(127,181,232,0.22); border:1.5px dashed var(--fix);"></i>Level Scrolling Bounds (Bottom)</span>
+      <span><i style="background:rgba(95,216,171,0.22); border:1.5px dashed var(--safe);"></i>Level Scrolling Bounds (Left)</span>
+      <span><i style="background:rgba(244,211,94,0.28); border:none;"></i>겹치는 구간 — 어느 트리거든 안전</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="callout">
+      <span class="label">정리 — 콜라이더 타입이 아니라 형태가 관건</span>
+      <ul>
+        <li><strong>Box vs Polygon은 무관하다.</strong> 사각형 방은 어느 쪽으로 그려도 볼록이라 안전하다.</li>
+        <li><strong>PolygonCollider2D로 통일해서 쓰면 된다.</strong> 방 타입마다 콜라이더 종류를 바꿀 이유가 없다.</li>
+        <li>레벨 디자인 시 확인할 것은 딱 하나 — <strong>이 방의 실제 경계가 오목한가.</strong></li>
+        <li>오목하다면(L자, 노치 등) 하나의 도형으로 그리지 말고 <strong>볼록한 조각 여러 개로 나눠서</strong> 배치한다.</li>
+        <li><strong>실제 상용 엔진(Corgi Engine)도 같은 방식</strong> — 방마다 전용 카메라 구역을 두고, 경계를 넘을 때 Cinemachine Priority로 전환/블렌딩한다. 메트로바니아 게임 인게임 맵이 대부분 사각형 격자로 보이는 것도 이 관행 때문일 가능성이 높다.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>또 하나의 트레이드오프 — 언제 재계산 비용을 내는가</h2>
+    <div class="prose" style="margin-bottom:16px;">
+      <p>
+        볼록/오목 문제와는 별개로, Cinemachine 공식 문서는 "경계를 계속 바꿔 부르는 것보다
+        <strong>존마다 미리 만들어둔 카메라끼리 블렌딩하는 게 더 효율적</strong>"이라고 명시한다.
+        이유는 <code>SetBounds()</code>를 부를 때마다 내부 캐시("skeleton")를 다시 계산해야 하기 때문이다.
+        아래는 그 비용을 <strong>언제, 몇 번</strong> 내는지를 시간 축으로 비교한 것이다.
+      </p>
+    </div>
+    <div class="room-card" style="border-top:2px solid var(--text-faint);">
+      <div class="room-head">
+        <span class="room-title">캐시 재계산 비용 타임라인</span>
+        <span class="room-tag">3번의 존 전환 기준</span>
+      </div>
+      <canvas id="costTimeline" width="640" height="240"></canvas>
+    </div>
+    <div class="legend" style="justify-content:center;">
+      <span><i style="background:var(--risk);"></i>비용 발생 — 캐시 재계산(skeleton 재생성)</span>
+      <span><i style="background:var(--safe);"></i>거의 무비용 — Priority만 전환, 블렌드는 이미 계산된 두 카메라 사이</span>
+    </div>
+    <div class="prose" style="margin-top:16px;">
+      <p>
+        <strong>지금 우리 방식(위쪽 행)</strong>은 씬 로드 때는 아무 계산도 안 하지만, 존을 넘을 때마다
+        <code>SetBounds()</code> → <code>InvalidateBoundingShapeCache()</code>로 매번 비용을 새로 낸다.
+        <strong>공식 권장 방식(아래쪽 행)</strong>은 정반대다 — 씬 로드 시점에 관련된 모든 방의 confiner를
+        한꺼번에 미리 계산해서 캐싱해두고, 그 다음부터는 존을 아무리 넘어도 Priority 숫자만 바꿔서
+        이미 계산된 두 카메라 사이를 블렌딩할 뿐 재계산이 없다.
+      </p>
+      <p>
+        도형이 단순하고(정점 몇 개짜리 사각형) 전환도 드문 지금 규모에서는 이 차이가 체감될 정도는 아니지만,
+        레벨이 커지거나 도형이 복잡해지거나 전환이 잦아지면 아래쪽(프리캐시 + 블렌딩) 쪽으로 옮겨가는 걸
+        고려할 수 있다는 뜻이다.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>공식 권장 방식 배치 — vcam 2개 + Priority</h2>
+    <div class="prose" style="margin-bottom:16px;">
+      <p>
+        <code>CameraRig</code> 밑에 방마다 <code>CinemachineCamera</code>를 하나씩 미리 만들어 두고,
+        각자 자기 방의 Confiner(Bounds)를 물려둔다. 평소엔 지금 있는 방의 카메라만 <strong>Priority를 높게</strong>(예: 10)
+        두고 나머지는 낮게(0) 둔다 — <code>CinemachineBrain</code>은 항상 Priority가 가장 높은 카메라로 자동 블렌딩한다.
+        방을 넘어가는 트리거에 닿으면 두 Priority 값을 서로 바꿔치기만 하면 된다.
+      </p>
+    </div>
+    <div style="display:grid; grid-template-columns: 1.1fr 1fr; gap: 18px; align-items:start;">
+      <div class="room-card fix">
+        <div class="room-head">
+          <span class="room-title"><span class="dot"></span>플레이어 위치</span>
+          <span class="room-tag">live</span>
+        </div>
+        <canvas id="priorityRoom" width="400" height="300"></canvas>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div class="cam-card" id="camBottomCard">
+          <div class="cam-name">
+            <span>CM Camera — Room Bottom</span>
+            <span class="badge">Blending To This</span>
+          </div>
+          <div class="field"><span>Priority</span><span class="v priority" id="priBottom">0</span></div>
+          <div class="field"><span>Confiner → Bounds</span><span class="v">Bottom Bounds</span></div>
+        </div>
+        <div class="cam-card" id="camLeftCard">
+          <div class="cam-name">
+            <span>CM Camera — Room Left</span>
+            <span class="badge">Blending To This</span>
+          </div>
+          <div class="field"><span>Priority</span><span class="v priority" id="priLeft">0</span></div>
+          <div class="field"><span>Confiner → Bounds</span><span class="v">Left Bounds</span></div>
+        </div>
+        <div class="field" style="font-family:var(--mono); font-size:12px; color:var(--text-faint); border-top:none; padding-top:4px;">
+          CinemachineBrain은 이 둘 중 Priority가 더 높은 쪽으로 자동 블렌딩
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Sources
+    <ul>
+      <li><a href="https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/CinemachineConfiner2D.html">Cinemachine Confiner 2D — 공식 매뉴얼 (3.1.6)</a></li>
+      <li><a href="https://discussions.unity.com/t/cinemachine-2d-confiner-makes-camera-snap-with-polygon-collider/803026">Cinemachine 2D confiner makes camera snap with polygon collider — Unity Discussions</a></li>
+      <li><a href="https://discussions.unity.com/threads/cinemachine-confiner-2d-update-area.515133/">Cinemachine Confiner 2D update area — Unity Discussions</a></li>
+      <li><a href="https://corgi-engine-docs.moremountains.com/rooms-system.html">Rooms System — Corgi Engine Documentation</a></li>
+    </ul>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function setupCanvas(canvas) {
+    var ctx = canvas.getContext("2d");
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = canvas.clientWidth || 400;
+    var cssH = canvas.clientHeight || 300;
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    ctx.scale(dpr, dpr);
+    return { ctx: ctx, w: cssW, h: cssH };
+  }
+
+  // virtual room space is 0..400 x 0..300, mapped to canvas css size
+  var VW = 400, VH = 300;
+
+  function vx(w, x) { return (x / VW) * w; }
+  function vy(h, y) { return (y / VH) * h; }
+
+  // Room definitions in virtual units
+  var margin = 40;
+  var fullRect = { x0: margin, y0: margin, x1: VW - margin, y1: VH - margin };
+
+  // L-shape = union of bottom arm + left arm, notch in top-right
+  var notch = { x0: 170, y0: margin, x1: VW - margin, y1: 150 };
+  var armBottom = { x0: margin, y0: 150, x1: VW - margin, y1: VH - margin };
+  var armLeft = { x0: margin, y0: margin, x1: 170, y1: VH - margin };
+
+  function clampToRect(px, py, r, hw, hh) {
+    var cx = Math.min(Math.max(px, r.x0 + hw), r.x1 - hw);
+    var cy = Math.min(Math.max(py, r.y0 + hh), r.y1 - hh);
+    return { x: cx, y: cy };
+  }
+
+  function dist2(ax, ay, bx, by) {
+    var dx = ax - bx, dy = ay - by;
+    return dx * dx + dy * dy;
+  }
+
+  function insideRect(px, py, r) {
+    return px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1;
+  }
+
+  var overlapZone = {
+    x0: Math.max(armBottom.x0, armLeft.x0), y0: Math.max(armBottom.y0, armLeft.y0),
+    x1: Math.min(armBottom.x1, armLeft.x1), y1: Math.min(armBottom.y1, armLeft.y1)
+  };
+
+  // camera half-extent (view frustum — must stay fully inside bounds)
+  var camHW = 26, camHH = 20;
+  // player half-extent (character collision radius — much smaller, real walls)
+  var charHW = 6, charHH = 6;
+
+  // A walkable, right-angled path: walk left along the bottom-arm floor,
+  // then walk up the narrow left-arm corridor — hugging the reflex corner
+  // (170,150) the whole way, like an actual platformer character would.
+  var pathPoints = [
+    { x: 300, y: 210 }, // floor, far right
+    { x: 150, y: 210 }, // floor, near the corner
+    { x: 150, y: 90 }   // up the corridor
+  ];
+  var pathLens = (function () {
+    var lens = [];
+    for (var i = 0; i < pathPoints.length - 1; i++) {
+      lens.push(Math.hypot(
+        pathPoints[i + 1].x - pathPoints[i].x,
+        pathPoints[i + 1].y - pathPoints[i].y
+      ));
+    }
+    return lens;
+  })();
+  var pathTotalLen = pathLens.reduce(function (a, b) { return a + b; }, 0);
+
+  // segment 1 (index 1, floor -> corridor top) is a 2D side-view climb, not a
+  // top-down walk — represent it as a string of small jump arcs bouncing
+  // between the shaft's walls, net progress upward, instead of a straight line
+  function climbSegment(f) {
+    var numHops = 4;
+    var baseY = 210 + (90 - 210) * f;
+    var hopPhase = f * numHops * Math.PI;
+    var bump = 14 * Math.abs(Math.sin(hopPhase));
+    var wallSide = Math.floor(f * numHops) % 2 === 0 ? -1 : 1;
+    var xWobble = wallSide * 12 * Math.abs(Math.sin(hopPhase));
+    return { x: 150 + xWobble, y: baseY - bump };
+  }
+
+  function posAlongPath(dist) {
+    var remaining = Math.max(0, Math.min(dist, pathTotalLen));
+    for (var i = 0; i < pathLens.length; i++) {
+      if (remaining <= pathLens[i] || i === pathLens.length - 1) {
+        var f = pathLens[i] === 0 ? 0 : remaining / pathLens[i];
+        if (i === 1) return climbSegment(f);
+        var p0 = pathPoints[i], p1 = pathPoints[i + 1];
+        return { x: p0.x + (p1.x - p0.x) * f, y: p0.y + (p1.y - p0.y) * f };
+      }
+      remaining -= pathLens[i];
+    }
+    return pathPoints[pathPoints.length - 1];
+  }
+
+  function rawInput(tSeconds) {
+    var speed = 70; // virtual units per second — a walking pace
+    var cycle = 2 * pathTotalLen;
+    var s = (tSeconds * speed) % cycle;
+    if (s < 0) s += cycle;
+    var d = s <= pathTotalLen ? s : (cycle - s); // ping-pong there and back
+    return posAlongPath(d);
+  }
+
+  function drawRoomShape(ctx, w, h, kind) {
+    ctx.save();
+    // background = "outside" fill
+    ctx.fillStyle = "#171a20";
+    ctx.fillRect(0, 0, w, h);
+
+    // grid
+    ctx.strokeStyle = "#242933";
+    ctx.lineWidth = 1;
+    for (var gx = 0; gx <= VW; gx += 40) {
+      ctx.beginPath();
+      ctx.moveTo(vx(w, gx) + 0.5, 0);
+      ctx.lineTo(vx(w, gx) + 0.5, h);
+      ctx.stroke();
+    }
+    for (var gy = 0; gy <= VH; gy += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, vy(h, gy) + 0.5);
+      ctx.lineTo(w, vy(h, gy) + 0.5);
+      ctx.stroke();
+    }
+
+    function fillRegion(r, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(vx(w, r.x0), vy(h, r.y0), vx(w, r.x1 - r.x0), vy(h, r.y1 - r.y0));
+    }
+
+    if (kind === "safe") {
+      fillRegion(fullRect, "#1e2833");
+      ctx.strokeStyle = "#3a5f52";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(vx(w, fullRect.x0), vy(h, fullRect.y0), vx(w, fullRect.x1 - fullRect.x0), vy(h, fullRect.y1 - fullRect.y0));
+    } else {
+      var fillColor = kind === "fix" ? "#1e2733" : "#2e2129";
+      fillRegion(armBottom, fillColor);
+      fillRegion(armLeft, fillColor);
+      // notch hatch (structure / outside)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(vx(w, notch.x0), vy(h, notch.y0), vx(w, notch.x1 - notch.x0), vy(h, notch.y1 - notch.y0));
+      ctx.clip();
+      ctx.strokeStyle = "#33383f";
+      ctx.lineWidth = 1;
+      for (var i = -300; i < 300; i += 10) {
+        ctx.beginPath();
+        ctx.moveTo(vx(w, notch.x0) + i, vy(h, notch.y0));
+        ctx.lineTo(vx(w, notch.x0) + i + 200, vy(h, notch.y0) + 200);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      ctx.strokeStyle = kind === "fix" ? "#3f6c8f" : "#7a4a3d";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(vx(w, armLeft.x0), vy(h, armLeft.y0));
+      ctx.lineTo(vx(w, armLeft.x1), vy(h, armLeft.y0));
+      ctx.lineTo(vx(w, armLeft.x1), vy(h, armBottom.y0));
+      ctx.lineTo(vx(w, armBottom.x1), vy(h, armBottom.y0));
+      ctx.lineTo(vx(w, armBottom.x1), vy(h, armBottom.y1));
+      ctx.lineTo(vx(w, armLeft.x0), vy(h, armBottom.y1));
+      ctx.closePath();
+      ctx.stroke();
+
+      if (kind === "fix") {
+        // doorway / transition-zone marker where the two camera rooms overlap
+        ctx.save();
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = "#7fb5e8";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(
+          vx(w, overlapZone.x0), vy(h, overlapZone.y0),
+          vx(w, overlapZone.x1 - overlapZone.x0), vy(h, overlapZone.y1 - overlapZone.y0)
+        );
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  function makeRoom(canvasId, deltaId, kind) {
+    var canvas = document.getElementById(canvasId);
+    var deltaEl = document.getElementById(deltaId);
+    var setup = setupCanvas(canvas);
+    var ctx = setup.ctx, w = setup.w, h = setup.h;
+
+    var trail = [];
+    var maxTrail = 46;
+    var lastCam = null;
+    var activeRoom = "bottom"; // Room C only: which convex camera-zone is active
+    var displayedCam = null;   // Room C only: blended/lagged camera position
+
+    // stage 1: real wall collision (small radius) — player can never enter the notch
+    function computePlayer(px, py) {
+      if (kind === "safe") {
+        return clampToRect(px, py, fullRect, charHW, charHH);
+      }
+      var a = clampToRect(px, py, armBottom, charHW, charHH);
+      var b = clampToRect(px, py, armLeft, charHW, charHH);
+      return dist2(px, py, a.x, a.y) <= dist2(px, py, b.x, b.y) ? a : b;
+    }
+
+    // stage 2: camera view frustum (large radius) — queried against the PLAYER's
+    // already-wall-clamped position, not the raw input
+    function computeCamera(px, py) {
+      if (kind === "safe") {
+        return clampToRect(px, py, fullRect, camHW, camHH);
+      }
+      if (kind === "fix") {
+        // real-world fix: don't recompute nearest-of-two every frame.
+        // Keep whichever convex camera-room is currently active, and only
+        // switch once the player has actually crossed into the other room's
+        // true bounds — that switch always happens inside the shared doorway.
+        var curRect = activeRoom === "bottom" ? armBottom : armLeft;
+        var otherRect = activeRoom === "bottom" ? armLeft : armBottom;
+        if (!insideRect(px, py, curRect) && insideRect(px, py, otherRect)) {
+          activeRoom = activeRoom === "bottom" ? "left" : "bottom";
+          curRect = otherRect;
+        }
+        return clampToRect(px, py, curRect, camHW, camHH);
+      }
+      var a = clampToRect(px, py, armBottom, camHW, camHH);
+      var b = clampToRect(px, py, armLeft, camHW, camHH);
+      return dist2(px, py, a.x, a.y) <= dist2(px, py, b.x, b.y) ? a : b;
+    }
+
+    function render(t) {
+      drawRoomShape(ctx, w, h, kind);
+
+      var raw = rawInput(t);
+      var player = computePlayer(raw.x, raw.y);
+      var camTarget = computeCamera(player.x, player.y);
+
+      var cam = camTarget;
+      if (kind === "fix") {
+        // simulate Cinemachine's blend: ease the displayed camera toward
+        // the target instead of snapping straight to it
+        if (!displayedCam) displayedCam = { x: camTarget.x, y: camTarget.y };
+        displayedCam.x += (camTarget.x - displayedCam.x) * 0.16;
+        displayedCam.y += (camTarget.y - displayedCam.y) * 0.16;
+        cam = displayedCam;
+      }
+
+      var jump = 0;
+      if (lastCam) jump = Math.hypot(cam.x - lastCam.x, cam.y - lastCam.y);
+      lastCam = { x: cam.x, y: cam.y };
+
+      trail.push({ x: cam.x, y: cam.y });
+      if (trail.length > maxTrail) trail.shift();
+
+      // trail
+      for (var i = 1; i < trail.length; i++) {
+        var a = trail[i - 1], b = trail[i];
+        var jumped = Math.hypot(a.x - b.x, a.y - b.y) > 14;
+        var alpha = i / trail.length;
+        ctx.strokeStyle = jumped
+          ? "rgba(239,122,97," + (0.55 * alpha) + ")"
+          : "rgba(244,211,94," + (0.35 * alpha) + ")";
+        ctx.lineWidth = jumped ? 2.5 : 1.6;
+        ctx.beginPath();
+        ctx.moveTo(vx(w, a.x), vy(h, a.y));
+        ctx.lineTo(vx(w, b.x), vy(h, b.y));
+        ctx.stroke();
+      }
+
+      // player marker (real wall-clamped position)
+      ctx.beginPath();
+      ctx.fillStyle = "#5b6270";
+      ctx.arc(vx(w, player.x), vy(h, player.y), 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // camera frame + point
+      ctx.strokeStyle = "rgba(244,211,94,0.8)";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(vx(w, cam.x - camHW), vy(h, cam.y - camHH), vx(w, camHW * 2), vy(h, camHH * 2));
+      ctx.beginPath();
+      ctx.fillStyle = "#f4d35e";
+      ctx.arc(vx(w, cam.x), vy(h, cam.y), 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      deltaEl.textContent = jump.toFixed(1) + " px";
+      deltaEl.classList.toggle("spike", jump > 14);
+
+      return jump;
+    }
+
+    return { render: render };
+  }
+
+  var roomA = makeRoom("roomA", "deltaA", "safe");
+  var roomB = makeRoom("roomB", "deltaB", "risk");
+  var roomC = makeRoom("roomC", "deltaC", "fix");
+
+  // static placement sketch: where to actually draw the two
+  // Level Scrolling Bounds trigger colliders in the scene (no animation)
+  (function drawPlacementSketch() {
+    var canvas = document.getElementById("placement");
+    if (!canvas) return;
+    var setup = setupCanvas(canvas);
+    var ctx = setup.ctx, w = setup.w, h = setup.h;
+
+    drawRoomShape(ctx, w, h, "fix");
+
+    var inset = 6;
+    var bottomBounds = { x0: armBottom.x0 + inset, y0: armBottom.y0 + inset, x1: armBottom.x1 - inset, y1: armBottom.y1 - inset };
+    var leftBounds = { x0: armLeft.x0 + inset, y0: armLeft.y0 + inset, x1: armLeft.x1 - inset, y1: armLeft.y1 - inset };
+    var overlap = {
+      x0: Math.max(bottomBounds.x0, leftBounds.x0), y0: Math.max(bottomBounds.y0, leftBounds.y0),
+      x1: Math.min(bottomBounds.x1, leftBounds.x1), y1: Math.min(bottomBounds.y1, leftBounds.y1)
+    };
+
+    function rectPx(r) {
+      return { x: vx(w, r.x0), y: vy(h, r.y0), w: vx(w, r.x1 - r.x0), h: vy(h, r.y1 - r.y0) };
+    }
+
+    function paintTrigger(r, fill, stroke, label, labelX, labelY) {
+      var p = rectPx(r);
+      ctx.fillStyle = fill;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(p.x, p.y, p.w, p.h);
+      ctx.setLineDash([]);
+      ctx.font = "600 12px " + getComputedStyle(document.body).fontFamily;
+      ctx.fillStyle = stroke;
+      ctx.fillText(label, vx(w, labelX), vy(h, labelY));
+    }
+
+    paintTrigger(bottomBounds, "rgba(127,181,232,0.20)", "#7fb5e8", "Level Scrolling Bounds (Bottom)", 190, 235);
+    paintTrigger(leftBounds, "rgba(95,216,171,0.20)", "#5fd8ab", "Level Scrolling Bounds (Left)", 46, 60);
+
+    // highlight the doorway overlap on top
+    var op = rectPx(overlap);
+    ctx.fillStyle = "rgba(244,211,94,0.30)";
+    ctx.fillRect(op.x, op.y, op.w, op.h);
+    ctx.font = "600 11px " + getComputedStyle(document.body).fontFamily;
+    ctx.fillStyle = "#f4d35e";
+    ctx.fillText("겹치는 구간", op.x + 6, op.y + op.h / 2 + 4);
+  })();
+
+  // cost-timeline: when does each approach pay the confiner recompute cost
+  var costTimeline = (function setupCostTimeline() {
+    var canvas = document.getElementById("costTimeline");
+    if (!canvas) return null;
+    var setup = setupCanvas(canvas);
+    var ctx = setup.ctx, w = setup.w, h = setup.h;
+
+    var events = [
+      { xf: 0.08, label: "씬 로드" },
+      { xf: 0.36, label: "전환 1" },
+      { xf: 0.64, label: "전환 2" },
+      { xf: 0.92, label: "전환 3" }
+    ];
+
+    // row definitions: cost at scene-load vs cost at each transition
+    var rowCurrent = { baseline: 0.42, label: "지금 방식 — 트리거마다 SetBounds()",
+      loadCost: 0.06, loadColor: "#5b6270",
+      transCost: 0.62, transColor: "#ef7a61" };
+    var rowOfficial = { baseline: 0.84, label: "공식 권장 — 프리캐시 vcam + 블렌딩",
+      loadCost: 0.7, loadColor: "#ef7a61",
+      transCost: 0.14, transColor: "#5fd8ab" };
+
+    function reveal(t, xf, cycle) {
+      var playheadT = t % cycle;
+      var eventT = xf * cycle;
+      if (playheadT < eventT) return 0;
+      return Math.min(1, (playheadT - eventT) / (cycle * 0.05));
+    }
+
+    function drawRow(t, cycle, row) {
+      var baseY = h * row.baseline;
+      ctx.font = "600 12px " + getComputedStyle(document.body).fontFamily;
+      ctx.fillStyle = "#9399a6";
+      ctx.fillText(row.label, w * 0.04, baseY - h * 0.16);
+
+      // baseline
+      ctx.strokeStyle = "#2a2f3a";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.04, baseY);
+      ctx.lineTo(w * 0.97, baseY);
+      ctx.stroke();
+
+      events.forEach(function (ev, i) {
+        var r = reveal(t, ev.xf, cycle);
+        if (r <= 0) return;
+        var isLoad = i === 0;
+        var targetH = (isLoad ? row.loadCost : row.transCost) * (h * 0.34);
+        var color = isLoad ? row.loadColor : row.transColor;
+        var barH = targetH * r;
+        var barW = Math.max(10, w * 0.035);
+        var x = w * ev.xf - barW / 2;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, baseY - barH, barW, barH);
+      });
+    }
+
+    function render(t) {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#171a20";
+      ctx.fillRect(0, 0, w, h);
+
+      var cycle = 6; // seconds per loop
+
+      // event ticks + labels (shared x axis)
+      events.forEach(function (ev) {
+        var x = w * ev.xf;
+        ctx.strokeStyle = "#2a2f3a";
+        ctx.beginPath();
+        ctx.moveTo(x, h * 0.94);
+        ctx.lineTo(x, h * 0.97);
+        ctx.stroke();
+        ctx.font = "500 11px " + getComputedStyle(document.body).fontFamily;
+        ctx.fillStyle = "#5b6270";
+        ctx.textAlign = "center";
+        ctx.fillText(ev.label, x, h * 0.995 + 10);
+      });
+      ctx.textAlign = "start";
+
+      drawRow(t, cycle, rowCurrent);
+      drawRow(t, cycle, rowOfficial);
+
+      // playhead
+      if (!reduced) {
+        var playX = w * ((t % cycle) / cycle);
+        ctx.strokeStyle = "rgba(231,233,238,0.55)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(playX, h * 0.06);
+        ctx.lineTo(playX, h * 0.9);
+        ctx.stroke();
+      }
+    }
+
+    return { render: render, cycle: 6 };
+  })();
+
+  // priority hand-off demo: same walker, but instead of a confiner swap,
+  // show two pre-baked CM Cameras trading Priority as the player crosses rooms
+  var priorityDemo = (function setupPriorityDemo() {
+    var canvas = document.getElementById("priorityRoom");
+    if (!canvas) return null;
+    var setup = setupCanvas(canvas);
+    var ctx = setup.ctx, w = setup.w, h = setup.h;
+
+    var priBottomEl = document.getElementById("priBottom");
+    var priLeftEl = document.getElementById("priLeft");
+    var cardBottom = document.getElementById("camBottomCard");
+    var cardLeft = document.getElementById("camLeftCard");
+    var activeRoom = "bottom";
+
+    function render(t) {
+      drawRoomShape(ctx, w, h, "fix");
+
+      var raw = rawInput(t);
+      var a = clampToRect(raw.x, raw.y, armBottom, charHW, charHH);
+      var b = clampToRect(raw.x, raw.y, armLeft, charHW, charHH);
+      var player = dist2(raw.x, raw.y, a.x, a.y) <= dist2(raw.x, raw.y, b.x, b.y) ? a : b;
+
+      var curRect = activeRoom === "bottom" ? armBottom : armLeft;
+      var otherRect = activeRoom === "bottom" ? armLeft : armBottom;
+      if (!insideRect(player.x, player.y, curRect) && insideRect(player.x, player.y, otherRect)) {
+        activeRoom = activeRoom === "bottom" ? "left" : "bottom";
+      }
+
+      if (priBottomEl) priBottomEl.textContent = activeRoom === "bottom" ? "10" : "0";
+      if (priLeftEl) priLeftEl.textContent = activeRoom === "left" ? "10" : "0";
+      if (cardBottom) cardBottom.classList.toggle("active", activeRoom === "bottom");
+      if (cardLeft) cardLeft.classList.toggle("active", activeRoom === "left");
+
+      ctx.beginPath();
+      ctx.fillStyle = "#5b6270";
+      ctx.arc(vx(w, player.x), vy(h, player.y), 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(231,233,238,0.5)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    return { render: render };
+  })();
+
+  if (reduced) {
+    // representative static frame: the moment the walker is closest to the
+    // reflex corner (partway up the corridor leg)
+    var t0 = 3.5;
+    roomA.render(t0);
+    roomB.render(t0);
+    roomC.render(t0);
+    if (costTimeline) costTimeline.render(costTimeline.cycle - 0.01); // all bars fully revealed
+    if (priorityDemo) priorityDemo.render(t0);
+    return;
+  }
+
+  var start = null;
+  function loop(ts) {
+    if (start === null) start = ts;
+    var tSeconds = (ts - start) / 1000;
+    roomA.render(tSeconds);
+    roomB.render(tSeconds);
+    roomC.render(tSeconds);
+    if (costTimeline) costTimeline.render(tSeconds);
+    if (priorityDemo) priorityDemo.render(tSeconds);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
