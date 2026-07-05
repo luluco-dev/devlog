@@ -1605,4 +1605,92 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 
 ---
 
+## 2026-06-27
+
+### MCP for Unity 패키지 추가 및 SceneGraphTool 정리
+
+- \`MCP For Unity\` 패키지 추가 (에디터 자동화 기반 마련)
+- \`SceneGraphMigrationUtility\` 제거, 관련 레거시 폴백 코드 정리
+- 노드 삭제 시 연결된 Edge도 함께 제거되도록 수정
+
+---
+
+## 2026-06-29
+
+### MapEditor + SceneGraphTool을 prototype에서 develop으로 이관
+
+- \`proto/Square/arttestscene\`에서 MapEditor 원본을 가져와 정리, SceneGraphTool + MapEditor 에디터 툴 전체를 develop으로 이관
+- \`TeamSeekers\` → \`TeamPluto\` 네임스페이스 전면 교체
+- \`TransitionPoint\` 원본 복구 + 네임스페이스 변경 + \`ConnectedSceneAddress\`/\`ConnectedEntranceId\` 프로퍼티 복구, \`SceneGraphBoundary.cs\` 누락 파일 추가
+
+### MapEditor 대량 기능 추가/개선
+
+- Sorting Layer 데이터 구조 및 UI 추가, 부모 배치 + SpriteRenderer 레이어 자동 설정
+- 카테고리 시스템을 string 기반 동적 리스트로 교체, 카테고리 탭 반응형 자동 줄바꿈(가로 스크롤 제거)
+- 드래그 드롭 스프라이트 임포트 구현, 드래그 호버 시 그리드 배경색 하이라이트
+- 그리드 ExpandHeight 적용(Height 220 하드코딩 제거)
+- 버그 수정: 카테고리 삭제 시 고아 엔트리 정리 + 빈 목록 퍼시스턴스, 삭제된 Sorting Layer 유령값 자동 초기화, Project 브라우저 드래그 이중처리 방지, \`File.Copy\` 예외 처리, \`paths\` 루프 project 에셋 가드를 \`IsPathRooted\`로 교체
+
+---
+
+## 2026-06-30
+
+### Odin Inspector 제거
+
+- Odin Inspector 의존성 전면 제거, 기본 Unity Inspector로 교체 (팀원 라이선스 미보유 확정에 따른 조치)
+
+---
+
+## 2026-07-03
+
+### 트윈/비동기/DI 라이브러리 설치
+
+- Addressables 2.7.6 패키지 추가
+- PrimeTween 1.4.8 설치 (Asset Store, MIT — DOTween 대체, Pro 전용 기능 미사용 확인됨)
+- UniTask 2.5.11 설치 (Cysharp, MIT, git URL)
+- VContainer 1.19.0 설치 + \`RootLifetimeScope\` 빈 골격 추가 (싱글톤 Awake 순서 미보장 문제 해소 목적 — 실제 등록 대상은 없어 컴파일 검증만)
+
+### Core 공통 어셈블리 3종 개설
+
+- \`Core.Enums\`/\`Core.Contracts\`/\`Core.Utilities\` asmdef 개설 (\`feat/hj/core-assemblies\` 브랜치, PR #25)
+- \`Core.Utilities\`에 \`Logger\`(추후 \`TeamPlutoLogger\`로 리네임, 아래 07-05 참고) 추가 — \`DEV_VER\` 심볼 조건부로 출시 빌드에서 로그 코드 자동 제거
+- Project Settings에 Root Namespace=\`TeamPluto\`, Scripting Define Symbols에 \`DEV_VER\` 등록
+- SceneGraphTool 기존 EditMode 테스트 67개 회귀 없음 확인
+
+### SceneGraphTool/MapEditor 이관 마무리
+
+- 테스트 픽스처 씬, \`SceneGraphData\` 이관
+- 테스트 씬에서 누락된 프리팹 참조 정리, MapEditor/SceneGraphTool 관련 누락 \`.meta\` 파일 추가
+- SceneGraphTool 테스트 2건의 프로덕션 데이터 파괴/오차 버그 수정
+- \`TransitionPoint\` 최소 데이터 스텁 추가(SceneGraphTool 컴파일 의존성 해소), 스텁 GUID를 원본 스크립트와 동일하게 맞춤
+
+---
+
+## 2026-07-05
+
+### TemplateScene Phase 1 — VContainer Root LifetimeScope + Core.Systems 어셈블리 분리
+
+\`feat/hj/templatescene-phase1\` 브랜치. TemplateScene을 VContainer로 부팅시키는 작업 착수하다 스펙을 두 번 정정하고, Core.Systems 어셈블리 분리까지 스코프를 넓혀서 완료.
+
+**스펙/계획 정정 과정:**
+- 원 설계 문서가 "기존 파일 수정"이라 가정한 \`SceneTransitionManager\`/\`CameraController\`/\`PlayerHUD\`/\`GameSettings\`가 develop에 없는 걸 발견 → Player/Item 참조를 전부 뺀 최소 버전으로 신규 작성 결정
+- \`GameEngine\`/\`CameraRig\`를 static Instance + DontDestroyOnLoad + 중복파괴 가드 대신 **VContainer Project Root LifetimeScope** 패턴으로 재설계
+- 계획 작성 중 "어셈블리 안 나누냐"는 질문에서 시작해 \`Core.Systems\` 어셈블리 분리까지 스코프 확장 결정, 네임스페이스도 \`Core.Enums\`/\`Core.Utilities\` 관례에 맞춰 8개 파일 전부 \`TeamPluto.Core.Systems\`로 통일
+- 조사 중 \`FadePanel.cs\`도 develop에 없음 + \`com.unity.cinemachine\` 패키지 자체가 미설치 상태인 걸 추가로 발견, 계획에 포함
+
+**구현 (subagent-driven-development, Task 1~12 자동화):**
+- \`GameEngine\`/\`CameraRig\`/\`TransitionPoint\`/\`FadePanel\`/\`SceneTransitionManager\`/\`CameraController\`/\`GameSettings\`/\`RootLifetimeScope\` 8개 파일을 \`Assets/Scripts/Core/Systems/\`로 통합, \`Core.Systems.asmdef\` 생성(참조: VContainer/Unity.Addressables/Unity.ResourceManager/Unity.Cinemachine/Core.Utilities)
+- Cinemachine 3.1.6 설치, MapEditor \`ApplySortingLayer\`를 DECORATION 컨테이너 스코프로 수정(씬 전체 검색 → DECORATION 하위로 한정)
+- \`Logger\` → \`TeamPlutoLogger\` 리네임 — \`UnityEngine.Logger\`(엔진 내장 클래스)와 이름이 겹쳐 \`using UnityEngine;\` + \`using TeamPluto.Core.Utilities;\`가 같은 파일에 있으면 CS0104 컴파일 에러가 나는 걸 실제로 겪고 수정
+
+**Unity MCP 연동 + 실시간 Play 테스트로 Task 13 진행, 실제 버그 2개 발견/수정:**
+- \`TemplateScene.unity\` 자체가 프로젝트에 없었음(SampleScene/TestScene_A/B/C만 존재) → 최소 빈 씬으로 새로 생성, v3 카테고리 하이어라키(LEVEL/SEQUENCE/OBJECT 등) 구성은 Phase 2로 미룸
+- \`RootLifetimeScope.Configure()\`의 \`RegisterComponentInNewPrefab(prefab, Lifetime.Singleton)\`이 자동으로 인스턴스화도 DDOL도 안 해준다는 걸 실제 Play 테스트로 발견 — VContainer 소스(\`ComponentRegistrationBuilder.cs\`) 확인 결과 (1) 지연(lazy) 등록이라 아무도 Resolve 안 하면 생성 자체가 안 됨 → \`RegisterBuildCallback\`으로 강제 Resolve 추가, (2) DDOL도 \`.DontDestroyOnLoad()\`를 명시적으로 체이닝해야만 적용됨(Root 스코프라고 자동 적용 아님) → 체이닝 추가. 두 수정 후 Play 모드 진입 + 씬 전환까지 실시간 검증 완료(GameEngine/CameraRig/SceneTransitionManager/CameraController Instance 전부 non-null, DDOL 유지, 중복 생성 없음)
+- 프리팹 3종(\`GameEngine\`/\`CameraRig\`/\`RootLifetimeScope\`) + \`VContainerSettings\` 생성/배선, TestScene_A에 남아있던 임시 씬 인스턴스 정리
+
+**부가 작업:**
+- Spine-Unity 4.2 런타임 설치(\`spine-unity-4.2-2026-05-29.unitypackage\`, proto 브랜치와 동일 버전, 예제 제외)
+- Unity MCP(CoplayDev/unity-mcp) 세션 연결 — 이후 에디터 상태 조회/컴파일 확인/Play 모드 테스트/GameObject 조작을 실시간으로 수행하는 데 사용
+
+---
 `;
