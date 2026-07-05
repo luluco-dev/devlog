@@ -1693,4 +1693,29 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 - Unity MCP(CoplayDev/unity-mcp) 세션 연결 — 이후 에디터 상태 조회/컴파일 확인/Play 모드 테스트/GameObject 조작을 실시간으로 수행하는 데 사용
 
 ---
+
+## 2026-07-06
+
+### TemplateScene Phase 2 — v3 콘텐츠 하이어라키 구성
+
+\`feat/hj/templatescene-phase2\` 브랜치. Phase 1이 만든 TemplateScene(완전히 빈 씬)에 실제 콘텐츠 하이어라키(LEVEL/SEQUENCE/OBJECT/ENEMY/DEVELOPMENT/DECORATION)를 채우는 작업.
+
+**브레인스토밍 중 확인한 사실:**
+- \`RootLifetimeScope.Awake()\`는 \`autoRun\`이면 무조건 \`Build()\`를 호출하는데, \`VContainerSettings.asset\`이 이미 앱 전역에서 1회 자동 부트스트랩하고 있어서 씬에 \`RootLifetimeScope\`(및 GameEngine/CameraRig)를 수동으로 또 배치하면 \`Configure()\`가 두 번 실행돼 중복 인스턴스화가 발생한다는 걸 소스 코드로 확인 — 그래서 SYSTEM/CHARACTER 구분선 자체를 이번엔 만들지 않기로 결정(둘 다 자식 없는 빈 이름표라 만들 이유가 없음)
+- Insignia(레퍼런스 메트로바니아) 실제 스크린샷을 참고해 Zone Camera/Level Scrolling Bounds/Door/Annotation 구조를 검증 — Zone Camera는 별도 vcam이 아니라 공유 카메라의 줌/Feather 값을 트리거로 조정하는 방식이었고, TransitionPoint는 리네임 없이 그대로 두기로 함(할로우나이트도 컴포넌트명 고정 + 인스턴스명만 상황별)
+
+**구현 (subagent-driven-development, Task 1~2 자동화 + Task 3 메인 세션에서 직접):**
+- \`LevelScrollingBounds.cs\` — 트리거 진입 시 \`CameraController.SetBounds()\` 호출(기존 API 재사용), \`Annotation.cs\` — DEVELOPMENT용 Title/Note/Date 메모 컴포넌트, 둘 다 \`Core.Systems\`에 추가
+- Unity MCP로 TemplateScene에 컨테이너 6개 + 예시 오브젝트(Grid/Tilemap, Zone Camera placeholder, Level Scrolling Bounds, TransitionPoint x2, Annotation) 배치
+- 최종 전체 브랜치 리뷰에서 \`Level Scrolling Bounds\` 콜라이더가 의도한 20×12가 아니라 기본값 100×100으로 저장된 걸 발견, 수정
+
+**Cinemachine Confiner2D 볼록/오목 리서치:**
+- 오목한(L자 등) 방에서 카메라가 튀는 버그는 콜라이더 타입(Box vs Polygon)이 아니라 도형의 볼록/오목 여부가 관건이라는 걸 Unity 공식 문서 + Discussions 포럼 + Corgi Engine 문서로 교차 검증
+- [실시간 캔버스 시뮬레이션 아티팩트](https://claude.ai/code/artifact/3dc1032a-0932-45d8-afd4-6cf93ff868a9)로 직접 확인 — 플레이어는 실제 벽에 막혀 노치를 침범 못 해도 카메라(뷰 프레임 기준 erosion) 쪽에서 스냅이 발생함을 시각적으로 증명, 볼록 조각 분할+Priority 전환으로 해결되는 것까지 포함
+- 결론: 기본은 볼록 도형 하나로 크게, 오목할 때만 볼록 조각으로 나누고 방마다 완전한 vcam+Priority 전환이 트리거 반복 스왑보다 안전 — Zone Camera(줌/구도)와는 다른 축의 문제라 별도 정리
+
+**부가 작업:**
+- \`MapEditorWindow.cs\`의 \`Debug.Log\`/\`Debug.LogWarning\` 15곳을 \`TeamPlutoLogger\`로 마이그레이션(기존 관례 미적용 상태였던 걸 이번에 정리)
+
+---
 `;
