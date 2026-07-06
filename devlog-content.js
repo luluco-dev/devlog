@@ -1211,7 +1211,7 @@ C++ 코드를 Unity C#으로 포팅해서 \`#region SpringMath\`에 인라인으
   - Walk 모드 stale 주석 수정 (Lissajous → walkAnchor로 수렴)
   - walkAnchor를 Walk/전환 구간에서만 업데이트 (Idle 중 불필요 연산 제거)
   - Walk 진입 시 walkAnchor를 shoulder 위치로 즉시 스냅 — lag가 이동 시작부터 자연스럽게 쌓임
-  - sequenceIdx 초기값   → -1 버그 수정 — 첫 Idle 시 waypointSequence[0] 건너뛰던 문제
+  - sequenceIdx 초기값  → -1 버그 수정 — 첫 Idle 시 waypointSequence[0] 건너뛰던 문제
   - CalcDriftDelta 미사용 메서드 제거
 - FallState 즉시 스냅 미처리 항목 메모리에 기록 (추후 처리 예정)
 - 임계감쇠 스프링 레퍼런스 문서 작성 (devlog/docs/critically-damped-spring.md)
@@ -1249,7 +1249,7 @@ TryDropThrough가 OneWay 플랫폼에서 동작하지 않던 버그 수정.
   - Walk 모드 stale 주석 수정 (Lissajous 부유 → walkAnchor로 수렴)
   - walkAnchor를 Walk/전환 구간에서만 업데이트 (Idle 중 불필요 연산 제거)
   - Walk 진입 시 walkAnchor를 shoulder 위치로 즉시 스냅 — lag가 이동 시작부터 자연스럽게 쌓임
-  - sequenceIdx 초기값   → -1 버그 수정 — 첫 Idle 시 waypointSequence[0] 건너뛰던 문제
+  - sequenceIdx 초기값  → -1 버그 수정 — 첫 Idle 시 waypointSequence[0] 건너뛰던 문제
   - CalcDriftDelta 미사용 메서드 제거
 - FallState 즉시 스냅 미처리 항목 메모리에 기록 (추후 처리 예정)
 - 임계감쇠 스프링 레퍼런스 문서 작성 (devlog/docs/critically-damped-spring.md)
@@ -1731,6 +1731,38 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 - VContainer 소스(\`ComponentRegistrationBuilder.cs\`, \`PrefabComponentProvider.cs\`) 재확인 결과, \`RegisterComponentInNewPrefab\`은 **등록된 루트 타입(GameEngine) 하나만** 주입하고 같은 프리팹 안의 \`GameSettings\` 같은 자식 컴포넌트는 주입 대상에서 빠진다는 걸 확인 — GameSettings가 GameEngine의 자식이라는 계층 구조를 배선 설계 때 놓친 게 근본 원인
 - \`GameEngine\`이 \`IObjectResolver\`를 주입받아 \`Awake()\`에서 \`resolver.InjectGameObject(gameObject)\`를 한 번 호출해 자기 하위 계층 전체를 재주입하도록 수정. 이 패턴은 프리팹 루트마다 개별로 필요(CameraRig 자식이 나중에 Inject가 필요해지면 CameraRig에도 동일하게 추가해야 함)하며, 동적으로 나중에 생성되는 자식에는 적용되지 않음
 - 관련 지식은 \`study/vcontainer-basics.md\` §8로 정리
+
+---
+
+## 2026-07-07
+
+### Movement 상태 전환 규칙 프레임워크
+
+\`feat/hj/movement-transition-framework\` 브랜치. TemplateScene Phase 1/2가 끝나 다음 순서로 Player 이동 상태(Idle/Move/Jump/Fall/Land)를 우선순위 + 규칙(rule) 조합으로 전환하는 프레임워크를 구현. 개별 상태 구현은 범위 밖 — 이번엔 그 상태들이 얹힐 기반(계약/루프/틱 연동)만 완성.
+
+**리서치/브레인스토밍:**
+- 과거 \`origin/feat/SavePoint\` 브랜치(미병합)에 거의 동일한 요구사항을 구현한 시스템이 있었음을 발견 — \`ITransitionRule\`/\`GetTransitionRules()\` override/우선순위 순회 패턴을 참고하되, 세부 구현은 전부 새로 설계(틀만 재사용)
+- 브레인스토밍으로 확정한 핵심 결정: \`MovementStateBase.TryEnter(context) = WantsToEnter(context) && GetTransitionRules().CheckAll(context)\` — "들어오고 싶은지"와 "들어올 수 있는지"를 분리하고, 상태 스스로 이 판단을 캡슐화(PlayerMovement는 우선순위 순회만 담당, 개방-폐쇄 원칙)
+- IsFinished 처리: 별도 하드코딩 분기 없이 \`CancelableFromStateRule\`이 "FromStateFinished=true면 취소 가능 취급"하는 규칙 하나로 흡수하도록 설계(A안)
+
+**구현 (subagent-driven-development, Task 1~10 + 최종 수정):**
+- \`Core.Contracts.Movement\`: \`IMovementState\`(생명주기 계약), \`MovementStateBase\`, \`ITransitionRule\`/\`TransitionContext\`/\`TransitionRuleExtensions\`(CheckAll/CheckAny), 공용 Rule 5종(Grounded/NotGrounded/SelfTransition/CancelableFromState/StateWhitelist)
+- \`Core.Enums\`: \`MovementPriority\` enum
+- 신규 \`Player\`/\`Player.Tests\` 어셈블리: \`PlayerMovement\`(우선순위 안정 정렬 전환 루프, VContainer \`ITickable\`/\`IFixedTickable\`/\`IDisposable\`, 명시적 인터페이스 구현으로 테스트용 \`Tick(float,float)\` 오버로드 분리), \`PlayerInputReader\`(기존 \`InputSystem_Actions.inputactions\`의 Move/Jump를 \`FindActionMap\`/\`FindAction\`으로 런타임 조회, Generate C# Class 방식 대신 테스트 격리를 위해 채택), \`PlayerLifetimeScope\`(VContainer 자식 스코프, InputReader→Movement 등록 순서로 틱 순서 보장)
+- EditMode 테스트 32개 전부 통과. Unity MCP 툴이 세션에 연결 안 돼있어 Task 10(씬 배선 Play Mode 검증)은 사용자가 직접 Unity Editor에서 진행 + Claude가 로그 분석/안내
+
+**과정에서 발견/수정한 환경 이슈:**
+- Unity 배치모드 EditMode 테스트에 \`-quit\` 플래그를 같이 주면 테스트 러너가 시작되기도 전에 종료돼버림(Editor.log: "Batchmode quit successfully invoked"만 찍힘) → 플랜 커맨드에서 제거. 이후 테스트 검증은 CLI 대신 사용자가 이미 열어둔 Unity Editor의 Test Runner로 진행하는 방식으로 전환(더 빠름)
+- Unity Input System 패키지(\`Unity.InputSystem.TestFramework.asmdef\`) 자체에 JSON \`versionDefines\` 키가 중복 정의돼 있어(빈 배열이 뒤에서 덮어씀) 테스트 어셈블리 전체가 컴파일에서 제외되던 버그 → 패키지 캐시 파일 직접 패치
+- \`InputTestFixture\`의 실제 네임스페이스는 \`UnityEngine.InputSystem.TestFramework\`가 아니라 \`UnityEngine.InputSystem\`
+- asmdef 참조는 전이(transitive)되지 않음 — \`Player.Tests\`가 \`Unity.InputSystem\` 타입을 직접 쓰려면 \`Player\`나 \`Unity.InputSystem.TestFramework\`가 이미 참조한다고 해도 별도로 참조를 추가해야 함
+- \`InputTestFixture\`로 "프레임 경과"를 검증하려면 \`Press()\` 이후 연속 \`Tick()\` 사이에 \`InputSystem.Update()\`를 명시적으로 호출해야 \`WasPressedThisFrame()\`이 리셋됨(실제 게임에선 엔진이 매 프레임 자동 처리하므로 프로덕션 코드는 무관)
+
+**최종 리뷰 2회 (Opus 전체 리뷰 → 수정 → Fable 재검토):**
+- Opus 리뷰에서 Important 2건 발견 후 수정: \`PlayerMovement\`에 \`IDisposable\` 추가(세션/스코프 파괴 시 \`Exit()\` 미호출 방지), \`GetPriority()\`를 \`int\`에서 \`MovementPriority\` enum 반환으로 전환 + 정렬을 \`List.Sort\`(불안정)에서 \`OrderBy\`(안정 정렬)로 교체
+- Fable 최종 리뷰: 어셈블리 경계(Core.Contracts가 Player를 모름, Enemy 재사용 목표 구조적으로 성립)와 테스트 품질을 재확인, 신규 발견 4건은 전부 Minor로 판단되어 스펙 문서에 "상태별 브랜치 착수 시 주의사항"으로 추가만 하고 코드는 그대로 유지(stateful Rule은 필드로 캐싱할 것, WantsToEnter 상호 배타성이 규약임을 명시, 우선순위 동률 시 삽입 순서로 정렬됨, IMovementState/MovementStateBase 역할 분리 설명)
+
+**다음 작업**: 상태별 브랜치를 Idle → Move → Jump → Fall → Land 순으로 하나씩 진행 예정.
 
 ---
 `;
