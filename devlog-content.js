@@ -1765,4 +1765,50 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 **다음 작업**: 상태별 브랜치를 Idle → Move → Jump → Fall → Land 순으로 하나씩 진행 예정.
 
 ---
+
+## 2026-07-08
+
+### Idle 상태 브랜치 + Player 프리팹 최초 생성
+
+\`feat/hj/idle-state\` 브랜치(PR #30, develop 머지 완료). Movement 상태 전환 프레임워크 위에 첫 번째 실제 상태인 \`IdleState\`를 구현하고, 그동안 코드만 있던 Player 시스템에 실제로 눈으로 확인 가능한 Spine 캐릭터를 연결.
+
+**구현:**
+- \`IdleState\`: \`SelfTransitionRule\`+\`GroundedRule\`+\`CancelableFromStateRule\` 구성, \`WantsToEnter = MoveInput.x == 0f\`(키보드 전용, 게임패드 데드존은 범위 밖), \`IsCancelable() => true\`(최하위 우선순위라 항상 다른 상태에 양보해야 교착 안 됨)
+- \`PlayerAnimator\` 신설 — Spine \`SkeletonAnimation\` 래퍼, \`Play(name, loop)\`만 노출(Spine 스켈레톤 데이터엔 애니메이션별 loop 여부가 저장 안 되므로 호출부가 매번 지정)
+- \`proto/Square/animationtest\` 브랜치에서 Spine 캐릭터 에셋(\`Main_Charactor.*\` 6종) \`git checkout\`으로 GUID 보존 반입
+- **Player 프리팹 develop 최초 생성** — Rigidbody2D/CapsuleCollider2D/PlayerLifetimeScope + GroundCheck/Visual_Spine 자식, Unity MCP로 구성
+- \`CameraController\`가 \`GameObject.FindWithTag("Player")\`로 Follow 타겟 자동 설정(어셈블리 역참조 없이 태그로 탐색 — HitBox2D가 \`GetComponent<HurtBox2D>()\`로 상대를 찾는 것과 같은 결)
+- \`PlayerTest\` 씬 신규 생성(Idle~Land 상태 브랜치 공용 재사용 예정)
+
+**Play 모드 검증 중 발견/수정한 실제 버그 2건:**
+- Unity Editor가 프리팹 생성(\`manage_prefabs create_from_gameobject\`) 도중 응답 없음(hang, 메모리 ~43GB)에 빠지는 사고 발생 — 사용자가 직접 복구 후 안전 절차(재조회 생략, editor/state 확인 후 진행)로 재시도해 해결. 이후 "Unity 에디터 내 작업은 Claude가 MCP로 직접 하지 않고 사용자에게 지시" 방침으로 전환
+- \`PlayerLifetimeScope\`에서 \`RegisterEntryPoint<PlayerInputReader>()\`만 등록하면 \`AsImplementedInterfaces()\`만 걸려 구체 타입이 노출 안 됨 — \`IdleState\` 생성자가 \`PlayerInputReader\`를 구체 타입으로 요구해 Play 모드에서 \`VContainerException\` 발생. \`.AsSelf()\` 체이닝으로 해결(EditMode 테스트는 \`new\`로 직접 생성해서 이 DI 배선 버그를 못 잡았음 — VContainer 등록 변경은 Play 모드 검증 필수라는 교훈)
+- \`RootLifetimeScope\`는 \`VContainerSettings.asset\`이 첫 씬 로드 시 이미 자동 스폰하므로, \`PlayerTest\` 씬에 수동 배치하면 GameEngine/CameraRig가 중복 생성됨을 확인 후 제거
+
+최종 리뷰(opus) Ready to merge: Yes, Critical/Important 0건.
+
+### Move 상태 브랜치 + 물리 소유권 아키텍처 피벗
+
+\`feat/hj/move-state\` 브랜치. 두 번째 상태 \`MoveState\`(가속) 구현 + \`IdleState\`에 감속 책임 추가로 시작했으나, Play 모드 실측 중 발견한 위화감을 계기로 물리 아키텍처를 재설계.
+
+**초기 구현:**
+- \`PlayerMovementData\`(SO) 신설 — \`runMaxSpeed\`/\`runAccelAmount\`/\`runDeccelAmount\`/\`moveAnimationThreshold\`. \`[SerializeField] private\` + 읽기 전용 프로퍼티로 캡슐화(프로젝트 기존 \`SceneMeta.cs\` 관례와 동일 패턴) — 여러 Player 인스턴스가 공유하는 캐릭터 기본 스펙이라 다른 코드의 실수 있는 직접 수정을 막기 위함, \`OnValidate()\`로 음수 방어
+- \`PlayerAnimator.UpdateLocomotion(velocityX, threshold)\` 추가 — 애니메이션 선택(Idle/Walk)을 State 전환과 완전히 분리, 실제 속도 기반으로 판단(입력 즉시 반응 vs 관성으로 미끄러지는 실제 물리 사이 시각적 괴리 해소). Spine은 Blend Tree 없이 이산적 클립 선택 + 자동 크로스페이드(믹스 테이블)만 지원하므로 이 방식이 Spine 환경의 적정 수준
+- \`MoveState\` 신규 — \`WantsToEnter = MoveInput.x != 0f\`(Idle과 정확한 여집합), 가속 공식은 [DawnosaurDev/platformer-movement](https://github.com/DawnosaurDev/platformer-movement) 참고(사용자 제공 원본 확인 결과 Tarodev가 아니라 이쪽이었음)
+
+**아키텍처 피벗 (Task 8):**
+- Play 모드에서 "Idle 상태인데 왜 감속을 계산하지"라는 위화감 발견 — 원래 설계는 Move=가속만/Idle=감속만 담당하도록 물리를 상태별로 쪼갠 구조였음
+- Tarodev Ultimate 2D Controller, DawnosaurDev(실제 원본), Celeste(\`NoelFB/Celeste\` 공개 소스) 세 레퍼런스를 직접 소스 레벨로 조사한 결과, 셋 다 물리(가속/감속)는 상태 무관 단일 지점에서 처리하고 애니메이션만 속도 기반으로 상태와 분리하는 구조였음을 확인 — 저희가 FSM 프레임워크에 맞추려고 물리까지 인위적으로 쪼갠 게 원인이었음
+- 신규 \`PlayerMovementPhysics.ApplyMovement(rb, moveInputX, data)\`로 물리 제어권을 통합 — 입력 유무로 내부에서 가속/감속을 분기하는 원본 공식 그대로, \`IdleState\`/\`MoveState\`가 \`OnFixedUpdate\`에서 완전히 동일하게 위임
+- 기존 \`IdleState\`의 \`Mathf.MoveTowards\` 선형 감속(정확히 0 도달)이 힘 기반 점근적 감속(정확히 0은 아님, \`moveAnimationThreshold\`로 시각적 문제 없음)으로 성격이 바뀜 — 의도된 트레이드오프
+
+**Play 모드 검증 중 발견/수정한 실제 버그 1건 + 프리팹 튜닝:**
+- \`Rigidbody2D.AddForce\`는 힘을 예약만 할 뿐 EditMode에서는 물리 엔진이 자동으로 안 돌아 즉시 \`linearVelocity\`에 반영 안 됨 — \`Physics2D.simulationMode = SimulationMode2D.Script\` + \`Physics2D.Simulate()\` 명시 호출로 해결(전역 설정이라 \`TearDown\`에서 원복 필수)
+- Player Rigidbody2D에 마찰 0 Physics Material 2D, Freeze Rotation(이동 중 회전하던 문제), Continuous/Never Sleep/Interpolate(부드러운 이동) 추가, Visual_Spine의 Physics Inheritance Position을 (0,0)으로(물리 상속이 아트 애니메이션을 왜곡시키던 문제) — 전부 Play 테스트 중 사용자가 직접 조정
+
+최종 리뷰(opus) Ready to merge: Yes, Critical/Important 0건. Minor 3건(테스트 GameObject 미정리, 가속/감속 기본값이 우연히 동일해 분기 자체 구분 테스트 없음, 점근적 감속)은 전부 향후 참고용.
+
+**다음 작업**: \`feat/hj/jump-state\` 브랜치 착수 예정 — 코요테타임 + 점프 버튼 홀드 시간 비례 가변 점프 높이. FallState가 점프 상승을 탈취하지 않도록 주의(스펙의 "상태별 브랜치 착수 시 주의사항" 1번).
+
+---
 `;
