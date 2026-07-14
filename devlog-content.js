@@ -1863,7 +1863,5 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 - Kinematic Movement — \`Ground/Wall Ray Count\`(각 4) 지면/벽 감지용 레이 개수 / \`Ground/Wall Probe Distance\`(각 0.1) 감지 레이 길이
 - Jump — \`Jump Height\`(3)·\`Time Till Jump Apex\`(0.4) 점프 목표 높이와 정점 도달 시간(이 둘로 중력을 역산) / \`Coyote Time\`(0.1) 발이 지면에서 떨어진 뒤에도 점프를 허용하는 유예 시간 / \`Jump Buffer Time\`(0.125) 착지 전 미리 누른 점프 입력을 기억해두는 시간 / \`Time For Upwards Cancel\`(0.027) Jump Cut(버튼 조기 해제) 시 상승 속도를 0으로 감쇠시키는 시간 / \`Apex Threshold\`(0.97)·\`Apex Hang Time\`(0.075) 정점 근접 판단 기준과 정점에서 체공하는 시간 / \`Max Fall Speed\`(10) 낙하 최대 속도(터미널 벨로시티) / \`Fall Gravity Multiplier\`(2) 낙하 시 중력 배율(상승보다 2배 빠르게 떨어짐)
 
-다음 작업: 브랜치 머지 후 진행 예정(벽점프/벽슬라이드 등 다음 스코프 논의 필요).
-
 ---
 `;
