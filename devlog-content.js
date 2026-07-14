@@ -1811,4 +1811,54 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 **다음 작업**: \`feat/hj/jump-state\` 브랜치 착수 예정 — 코요테타임 + 점프 버튼 홀드 시간 비례 가변 점프 높이. FallState가 점프 상승을 탈취하지 않도록 주의(스펙의 "상태별 브랜치 착수 시 주의사항" 1번).
 
 ---
+
+## 2026-07-14
+
+**\`feat/hj/slope-detection\` 브랜치 — 킨매틱 모터 전면 재작성 (develop 머지 완료, PR #32)**
+
+기존 Dynamic Rigidbody2D + AddForce 방식에서 3가지 미해결 이슈(이중 봉우리 지형에서 갇힘, 좌→우/우→좌 이동이 비대칭, 평지-경사 이동 속도 불일치)가 계속 발목을 잡아서, 이번엔 패치가 아니라 **Kinematic Rigidbody2D + 수제 레이캐스트 모터(\`PlayerMotor\`)로 이동/충돌 파이프라인 전체를 새로 짰다.
+
+- 레퍼런스 프로젝트(\`TUT-Ultimate-Platformer-Controller\`)의 \`MovementControllerSM.cs\`를 코드리서치해서 walkable-우선 지면 감지, \`FaceDirection\` 기반 좌우 대칭 판정, \`Dot\` 재투영 대신 velocity magnitude를 보존한 채 방향만 새 접선으로 스냅하는 방식을 채택
+- BoxCollider2D 하나의 bounds에서 다중 레이로 지면/벽을 스캔(\`ScanGround\`/\`ScanWall\`), "항상 붙음" 규칙 하나로 내리막 추적/오르막 등반/파묻힘 밀어내기/착지 정지를 통합
+- subagent-driven-development로 Task 1~6 자동화, Task 7(Player.prefab 킨매틱 전환, 사용자 직접 실측) 중 실제 버그 2건 발견:
+  - 평지에 정확히 붙으면 벽 레이가 발밑 지면을 벽으로 오인식 — 벽 레이 Y 범위에 \`CollisionPadding\` 인셋 추가로 해결
+  - EditMode 테스트에서 \`Collider2D.bounds\`가 \`transform.position\` 변경 직후 즉시 갱신 안 됨(\`Physics2D.SyncTransforms()\` 필요) — 테스트 10개가 이걸로 잘못 실패하던 것 원인 규명 후 헬퍼에 반영
+- 최종 전체 브랜치 리뷰(Opus): Ready to merge — Yes, Critical 0건. EditMode 테스트 147개 전부 통과
+
+---
+
+## 2026-07-15
+
+**\`feat/hj/jump-state\` 브랜치 — Jump/Fall/Land 상태 추가**
+
+\`Idle → Move → Jump → Fall → Land\` 순서의 나머지 3개 상태를 붙이는 작업. 코드리서치→브레인스토밍→계획→subagent-driven-development 순서로 진행했고, Task 7 실측 단계에서 실제로 손이 많이 갔다.
+
+**설계 요약**
+- \`JumpState\` 하나가 상승·Jump Cut(버튼 조기 해제)·Apex Hang(정점 체공)을 전부 내부 plain bool/필드로 관리. \`IsCancelable()\`이 항상 \`false\`라 상승 중엔 Fall이 못 뺏어가고, 실제 하강이 시작되는 프레임에만 \`IsFinished()=true\`로 Fall에 핸드오프 — 새 전환 규칙 클래스 없이 기존 \`CancelableFromStateRule\` 하나로 해결
+- \`FallState\`는 자연 낙하와 점프 후 낙하를 원인 구분 없이 통합, \`FallGravityMultiplier\`로 상승보다 빠르게 낙하(레퍼런스의 \`GravityOnReleaseMultiplier\`와 동일 개념)
+- \`LandState\`는 처음엔 "1프레임짜리 순간 상태"로 설계했다가, 착지 애니메이션을 실제로 연결해보니 애니메이션이 훨씬 길어서 재생되다 잘리는 문제를 발견 — Jump와 같은 \`IsCancelable=false\`+타이머 패턴으로 바꿔서 **애니메이션 실제 길이만큼 지속되고, 그동안 입력을 무시**하도록 재설계. 신기하게도 "착지 중엔 점프조차 못 뺏어가다가, 애니메이션이 끝나는 프레임에 버퍼된 점프가 자동으로 발동"하는 동작이 별도 코드 없이 기존 우선순위+\`CancelableFromStateRule\` 조합만으로 자연스럽게 성립함
+- 코요테 타임/점프 버퍼링은 \`PlayerMotor\`와 분리한 신규 \`PlayerJumpTimers\` 클래스가 전담, VContainer에 \`PlayerInputReader → PlayerJumpTimers → PlayerMovement\` 순서로 독립 등록(등록 순서 = Tick 순서 관례)
+
+**Task 7 실측 중 발견/수정한 버그와 조정**
+
+1. **Critical — 점프해도 안 뜸**: \`PlayerMotor.ResolveVertical\`의 "항상 붙음" 스냅이 이륙 순간(아직 접지로 감지되는 프레임)의 상승 속도를 무시하고 표면에 다시 눌러버림. \`Move()\`에 하위호환 \`ignoreGroundedSnap\` 파라미터를 추가해 해결
+2. **Critical — 벽에 붙으면 자동으로 타고 올라감**: 벽에 오차 0으로 붙으면 가장 바깥쪽 지면 레이 원점이 옆 벽 콜라이더 안에서 시작해(distance=0) 벽을 지면으로 오인식, 초당 정확히 \`CollisionPadding/dt\`(=1.0유닛)씩 상승. 이번엔 서브에이전트 없이 Unity MCP로 Play 모드에서 직접 재현(실측치가 계산과 정확히 일치하는 것까지 확인)→수정→재검증까지 전부 라이브로 진행
+3. **공중 조작감 문제**: 공중에서는 가속/감속이 아예 없어서(이륙 순간 속도가 고정) 방향전환이 전혀 안 됐음. 레퍼런스도 지상/공중 가속치를 분리해서 쓰고 있어서 \`AirAccelAmount\`/\`AirDeccelAmount\` 추가
+4. **디버그 궤적 기즈모 재작업**: 처음엔 "발사 높이로 돌아오는 시점"까지만 그려서 지형이 그보다 낮으면 허공에서 끊기는 문제 발견 → 레퍼런스 방식(고정 스텝 수만큼 계속 그림)으로 재작성, 정점 체공 구간도 반영, 흰색으로 변경 + \`DrawRight\`(좌우 반전)/\`StopOnCollision\`(지면 충돌 시 중단) 토글도 레퍼런스에서 그대로 가져옴
+5. **Jump/Fall/Land 애니메이션 미연결 발견**: Spine에 \`Animation/Jump\`/\`Animation/Fall\`/\`Animation/Land\`가 이미 다 있고 전환용 믹스 시간까지 준비돼 있었는데, 실제로는 3개 State 전부 Walk/Idle만 재생 중이었음 — \`PlayerAnimator\`에 \`PlayJump()\`/\`PlayFall()\`/\`PlayLand()\` 추가해서 연결
+6. 가속/감속 값 재튜닝: \`Run Accel/Deccel\`을 5/5(미끄러운 느낌)에서 15/25로, \`Air Accel/Deccel\`을 8/8로
+
+최종 전체 브랜치 리뷰(Opus): Ready to merge — Yes, Critical/Important 0건. Minor 6건은 전부 비블로킹(성능 최적화 여지, 이전 브랜치부터 있던 항목 등).
+
+<img src="images/jump-arc-gizmo-2026-07-15.png" width="600">
+<figcaption>레퍼런스 방식으로 재작성한 점프 궤적 디버그 기즈모 — 정점 체공 구간 포함, 지면 충돌 시 궤적 중단(StopOnCollision)</figcaption>
+
+<img src="images/player-movement-data-tuning-2026-07-15.png" width="600">
+<figcaption>최종 튜닝값 — 지상/공중 가속·감속 분리, Jump Height/Coyote Time/Jump Buffer/Apex Hang 등 점프 관련 파라미터 전체</figcaption>
+
+**아트 요청 예정**: \`Animation/Land\` 클립이 낙하 구간까지 포함해서 0.7초로 김(일반적인 착지치고 긴 편) — 순수 임팩트 구간만 남기고 잘라달라고 요청 예정. 나중에 낙하 속도 기준 하드/소프트 착지 분기를 만들 때는, 소프트 착지용 짧은 클립을 쓰면 "착지 즉시 버퍼된 점프 발동" 메커니즘 덕분에 추가 코드 없이 자연스러운 봉봉 뛰기 느낌이 날 것으로 예상.
+
+다음 작업: 브랜치 머지 후 진행 예정(벽점프/벽슬라이드 등 다음 스코프 논의 필요).
+
+---
 `;
