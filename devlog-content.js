@@ -1856,7 +1856,12 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 <img src="images/player-movement-data-tuning-2026-07-15.png" width="600">
 <figcaption>최종 튜닝값 — 지상/공중 가속·감속 분리, Jump Height/Coyote Time/Jump Buffer/Apex Hang 등 점프 관련 파라미터 전체</figcaption>
 
-**아트 요청 예정**: \`Animation/Land\` 클립이 낙하 구간까지 포함해서 0.7초로 김(일반적인 착지치고 긴 편) — 순수 임팩트 구간만 남기고 잘라달라고 요청 예정. 나중에 낙하 속도 기준 하드/소프트 착지 분기를 만들 때는, 소프트 착지용 짧은 클립을 쓰면 "착지 즉시 버퍼된 점프 발동" 메커니즘 덕분에 추가 코드 없이 자연스러운 봉봉 뛰기 느낌이 날 것으로 예상.
+**필드별 설명**
+
+- Walk — \`Run Max Speed\`(6) 최대 걷기 속도 / \`Run Accel Amount\`(15)·\`Run Deccel Amount\`(25) 목표 속도로 다가가는 Lerp 보간 비율(가속·감속, 클수록 스냅) / \`Air Accel Amount\`·\`Air Deccel Amount\`(각 8) 공중에서의 가속·감속(지상보다 느슨하게 잡아 공중 조작감을 다르게 줌) / \`Move Animation Threshold\`(0.1) 이 속도 이상일 때 Walk 애니메이션으로 판단
+- Slopes — \`Max Slope Angle\`(50) 이 각도 이하만 걸을 수 있는 경사, 초과하면 슬라이드 / \`Slide Acceleration\`(5) 가파른 경사에서 내리막으로 미끄러지는 가속도
+- Kinematic Movement — \`Ground/Wall Ray Count\`(각 4) 지면/벽 감지용 레이 개수 / \`Ground/Wall Probe Distance\`(각 0.1) 감지 레이 길이
+- Jump — \`Jump Height\`(3)·\`Time Till Jump Apex\`(0.4) 점프 목표 높이와 정점 도달 시간(이 둘로 중력을 역산) / \`Coyote Time\`(0.1) 발이 지면에서 떨어진 뒤에도 점프를 허용하는 유예 시간 / \`Jump Buffer Time\`(0.125) 착지 전 미리 누른 점프 입력을 기억해두는 시간 / \`Time For Upwards Cancel\`(0.027) Jump Cut(버튼 조기 해제) 시 상승 속도를 0으로 감쇠시키는 시간 / \`Apex Threshold\`(0.97)·\`Apex Hang Time\`(0.075) 정점 근접 판단 기준과 정점에서 체공하는 시간 / \`Max Fall Speed\`(10) 낙하 최대 속도(터미널 벨로시티) / \`Fall Gravity Multiplier\`(2) 낙하 시 중력 배율(상승보다 2배 빠르게 떨어짐)
 
 다음 작업: 브랜치 머지 후 진행 예정(벽점프/벽슬라이드 등 다음 스코프 논의 필요).
 
