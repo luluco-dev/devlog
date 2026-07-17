@@ -1864,4 +1864,42 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 - Jump — \`Jump Height\`(3)·\`Time Till Jump Apex\`(0.4) 점프 목표 높이와 정점 도달 시간(이 둘로 중력을 역산) / \`Coyote Time\`(0.1) 발이 지면에서 떨어진 뒤에도 점프를 허용하는 유예 시간 / \`Jump Buffer Time\`(0.125) 착지 전 미리 누른 점프 입력을 기억해두는 시간 / \`Time For Upwards Cancel\`(0.027) Jump Cut(버튼 조기 해제) 시 상승 속도를 0으로 감쇠시키는 시간 / \`Apex Threshold\`(0.97)·\`Apex Hang Time\`(0.075) 정점 근접 판단 기준과 정점에서 체공하는 시간 / \`Max Fall Speed\`(10) 낙하 최대 속도(터미널 벨로시티) / \`Fall Gravity Multiplier\`(2) 낙하 시 중력 배율(상승보다 2배 빠르게 떨어짐)
 
 ---
+
+## 2026-07-17
+
+**\`feat/hj/climb-state\` 브랜치 — 벽 클라임(러지 맨틀) 상태 추가**
+
+\`Idle → Move → Jump → Fall → Land\`에 이어 \`ClimbState\`를 추가하는 작업. 코드리서치→브레인스토밍(전날 세션에서 사실상 완료)→계획→subagent-driven-development 순서로 진행했고, Task 8 Play 모드 실측 단계에서 흥미로운 버그를 여러 개 잡았다.
+
+**설계 요약**
+
+- \`ClimbState\` 단일 클래스가 Hang(매달림)/Mantle(올라타기)을 \`isMantling\` bool로 내부 분기. 진입조건·우선순위가 완전히 동일한 하나의 연속 행동이라 Jump/Fall/Land처럼 별도 클래스로 나누지 않기로 결정
+- \`IsCancelable()\`을 Hang/Mantle 구분 없이 항상 \`false\`로 고정 — \`FallState.WantsToEnter\`가 항상 \`true\`라 Hang 중 \`IsCancelable=true\`면 매 틱 Fall에 뺏기기 때문(JumpState가 상승 중 쓰는 것과 동일 메커니즘). 드롭/Mantle 완료는 \`isFinished\` 자기 선언으로만 핸드오프
+- 감지는 레이 4개: 손 높이(HIT 필수) → 머리 높이(MISS 필수, 모서리 확인) → 하향(러지 정확한 Y, \`RaycastHit2D.point\` 사용·\`.bounds\` 금지) → 헤드룸(MISS 필수, 설 자리 확인)
+- Mantle은 L자 경로(수직 상승→수평 이동) + \`AnimationCurve\` 이징, 이동 시간은 Spine 클립 길이(\`Animation/Climb_UP\`)에 동기화
+- 재그랩 방지는 \`PlayerJumpTimers\`와 동일 패턴의 \`PlayerClimbTimers\`(독립 \`FixedTick\`)로 분리
+- \`MovementPriority\`를 \`Climb=0\`(최우선), \`Jump=1\`, \`Fall=2\`, \`Land=3\`, \`Move=4\`, \`Idle=5\`로 전체 재번호
+- 브레인스토밍 때 있던 \`minClimbHeight\`(낮은 턱 무시) 게이트는, 러지가 구조상 손~머리 오프셋 사이 고정 높이에서만 감지되는데 그 범위 자체가 이미 후보 게이트값보다 항상 높다는 게 다이어그램 검토 중 드러나 이번 스코프에서 제거
+
+**구현 중 발견한 사소한 실수**
+
+- Task 1 구현 서브에이전트가 리포 루트(\`Assets/...\`, 옛 프로젝트 구조 잔재 경로)에 파일을 잘못 만들고 커밋 — 리뷰어가 "Modify인데 new file mode로 나온다"고 짚어줘서 발견, 즉시 수정
+- \`ScanLedge\`의 헤드룸 레이가 방금 맞힌 러지 표면에 원점을 딱 붙여서 쏘다 보니 self-hit 오탐지 — \`CollisionPadding\` 오프셋 추가로 해결. 같은 버그가 디버그 Gizmo 코드(손으로 복제한 레이캐스트)에도 그대로 있어서 리뷰에서 또 한 번 발견, 동일하게 수정
+
+**Task 8 Play 모드 실측 중 발견한 버그 3종 (사용자 직접 테스트, 흥미로운 것들)**
+
+1. **Mantle 중 캐릭터가 엉뚱한 곳으로 순간이동**: \`ComputeHangPosition\`/\`ComputeMantleEndPosition\`이 "콜라이더 중심이 있어야 할 위치"를 계산해서 그 값을 그대로 \`rb.position\`에 대입했는데, 실제로는 \`콜라이더 중심 = rb.position + boxCollider.offset\`이라 오프셋(Player 프리팹은 (0, 0.4))만큼 어긋남. 어긋난 상태로 Mantle 곡선을 타다 \`PlayerMotor.ResolveVertical\`의 "바닥 아래로 안 뚫리게" 안전장치가 예기치 않게 개입해 순간적으로 큰 속도가 나가는 걸로 나타남. 두 메서드에 \`- boxCollider.offset\` 추가로 해결
+2. **드롭 후 다시는 Climb에 못 들어감**: \`PlayerClimbTimers\`(재그랩 잠금 타이머)가 \`builder.Register<>()\`로만 등록돼 VContainer 틱 루프에 안 걸려있어서 \`FixedTick()\`이 한 번도 안 불리고 잠금 타이머가 영원히 안 줄어듦. \`PlayerJumpTimers\`는 처음부터 \`RegisterEntryPoint\`로 정확히 등록돼 있었는데 \`PlayerClimbTimers\`만 Task 7 플랜 작성 시점부터 빠뜨림 — 리뷰에서도 "등록 위치"만 확인하고 "등록 방식"은 안 봐서 못 잡았음. \`RegisterEntryPoint<>().AsSelf()\`로 수정
+3. **오프셋 버그 수정 후에도 가끔 한 번씩 재발**: \`ClimbState.Enter()\`와 \`StartMantle()\`이 \`motor.State.LedgePoint\`를 각각 따로 두 번 읽고 있었는데, \`PlayerLifetimeScope\`의 \`isGroundedCheck\` 델리게이트가 \`PlayerMovement\`/\`PlayerJumpTimers\` 양쪽에서 매 틱 \`motor.PollSensors()\`를 호출해서 Climb 중이어도 \`motor.State\`가 계속 재스캔됨. Hang 스냅 직후 손 높이 레이가 러지 윗면과 정확히 같은 Y에서 쏘다 보니 부동소수점 경계에서 드물게 미스가 나 \`HasLedge\`가 순간 \`false\`, \`LedgePoint\`가 \`(0,0)\`으로 리셋되는 경우가 있었고, 하필 그 타이밍에 Mantle을 트리거하면 리셋된 \`(0,0)\` 기준으로 목표 위치를 계산해 원점 근처로 날아감. \`Enter()\`에서 \`ledgePoint\`를 한 번만 캐싱해 이후 재읽기 없이 그 값만 쓰도록 수정 — 벽을 비활성화해 재스캔 변화를 결정적으로 재현하는 회귀 테스트도 추가
+
+**레벨 디자인용 디버그 Gizmo 4종 추가 (실측 중 사용자 요청)**
+
+- 점프 정점 Gizmo가 벽/천장에 막히면 이론상 정점 대신 실제 도달 가능한 높이로 마커 이동
+- Climb 가능 높이 구간(손~머리 오프셋)을 벽 유무와 무관하게 참고선으로 표시
+- Play 모드에서 러지 감지 중일 때 Hang 스냅 위치를 박스로 미리보기
+- 제자리 점프 최대 높이 안에서 실제로 잡히는 러지가 있는지, 어디로 이동될지까지 Edit 모드에서 바로 확인(GameObject를 옮기지 않고 좌표 계산만으로 동작 — \`ScanLedge\`와 동일한 4단계 판정을 손으로 재현)
+
+최종 전체 브랜치 리뷰(Opus, 20커밋): Ready to merge — Yes, Critical/Important 0건. 실측 중 나온 수정 커밋 5개 전부 정확하고 완전하게 적용됐는지, 같은 버그 패턴이 다른 곳에 더 없는지까지 훑었지만 추가 발견 없음.
+
+---
 `;
