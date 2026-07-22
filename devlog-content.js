@@ -1902,4 +1902,53 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 최종 전체 브랜치 리뷰(Opus, 20커밋): Ready to merge — Yes, Critical/Important 0건. 실측 중 나온 수정 커밋 5개 전부 정확하고 완전하게 적용됐는지, 같은 버그 패턴이 다른 곳에 더 없는지까지 훑었지만 추가 발견 없음.
 
 ---
+
+## 2026-07-20
+
+**\`feat/hj/platform-system\` 브랜치 — 원웨이 플랫폼 드롭스루 코어 추가 (develop 머지 완료, PR #35)**
+
+2026-07-18~20 사이 작업, devlog 기록이 누락돼 있어 커밋 로그 기반으로 뒤늦게 정리. \`PlayerMotor\`에 \`platformLayer\`(OneWay 플랫폼 전용) 드롭스루 코어를 추가하고, 아래 입력+점프로 플랫폼을 뚫고 내려가는 동작을 여러 상태에 배선한 뒤 라이브 리뷰로 여러 번 다듬었다.
+
+- \`PlayerMotor\`에 OneWay 플랫폼 드롭스루 코어 추가, \`PlayerLifetimeScope\`에 \`platformLayer\` 배선
+- \`Idle\`/\`Move\`/\`Land\` 상태 각각에 드롭스루 트리거 추가(\`LandState\`는 착지 직후 반응 안 하던 문제 있었음), \`Jump\`에는 드롭스루 진행 중 우선순위를 양보하는 조건 추가
+- 아래 입력에 버퍼(코요테 타임과 동일 개념)를 추가해 사람 손 타이밍(아래+점프 동시 입력) 레이스 완화
+- 리뷰에서 발견된 버그들: 드롭스루 트리거가 점프 버퍼 파이프라인을 우회해 프레임 누락 + 유령 점프가 나던 문제, Jump 상승 중 재접지 시 표면을 관통하던 문제(리뷰 2회에 걸쳐 수정), 타이머 클래스(Jump/Climb/PlatformDrop)가 FixedUpdate에 걸려있어 발생하던 문제 → Update로 이전
+- 최종 정리: self-hit(콜라이더에 파묻힌 상태)일 때 실제 표면 기준으로 즉시 보정하도록 변경했다가, 리뷰에서 **Critical 1건**(드롭스루 중에는 이 self-hit 보정을 완전히 스킵해야 하는데 안 걸려 있던 문제) 발견해 수정 — 드롭스루 클리어런스 판정도 별도 계산 대신 \`ScanGround\`의 콜라이더를 그대로 재사용하도록 변경
+- \`JumpState\`가 종료(\`isFinished\`)된 뒤에도 조건이 다시 흔들리면 점프 물리가 "부활"하던 문제에 가드 추가
+- PR #35로 develop 머지 완료. 이 브랜치가 도입한 \`PlatformArrivalThreshold\`/self-hit 보정 로직은 이후 \`feat/hj/ladder\` 브랜치(2026-07-22 항목)에서 "아래에서 접근 시 오판" 케이스를 3라운드에 걸쳐 추가로 다듬게 된다
+
+---
+
+## 2026-07-22
+
+**\`feat/hj/ladder\` 브랜치 — 사다리 이동 완성, 원웨이 플랫폼 self-hit 버그 3라운드, 레벨 디자인 Gizmo/인스펙터 정리**
+
+이전 세션에서 \`LadderState\` 구현과 Play 모드 실측 기반 버그 수정을 이어가다, 이번 세션에서는 실측 중 튀어나온 원웨이 플랫폼 착지 오판 버그를 정적 분석만으로 추적·수정하고, 레벨 디자인용 디버그 도구를 다듬은 뒤 최종 리뷰까지 마쳤다. Unity MCP 라이브 테스트는 이번엔 사용자가 허락하지 않아 전부 정적 분석/코드 추적으로 진행.
+
+**원웨이 플랫폼 self-hit 버그 — 3라운드**
+
+1. **밑에서 점프해도 플랫폼 위로 올라가버림**: \`PlayerMotor\`의 self-hit depenetration이 "아래에서 접근"과 "위에서 착지"를 구분 못 함. 처음엔 속도 부호로 판단하려 했으나 정점 근처에서 속도가 0/음수로 바뀌는 순간을 못 걸러 실패, 머리(\`bounds.max.y\`) 기준으로도 시도했으나 사용자가 "발이 아니라 머리로 하면 안 되지 않을까?"라고 바로 지적 — 발(\`bounds.min.y\`) 기준 \`PlatformArrivalThreshold\`(콜라이더 윗면 - 판정 여유) 게이트로 최종 확정
+2. **더 큰 버그로 발전 — 플레이어가 플랫폼 안에 완전히 파묻혀 얼어붙음**: \`ResolveVertical\`만 고쳤더니 \`ScanGround\`가 여전히 self-hit을 걸러내지 않아 \`State.IsGrounded\`가 오탐지, \`JumpState.isGenuineLanding\`이 착지로 확정해버리고 이후 Idle/Move가 "접지 중"이라 믿어 중력 적분을 건너뜀 — \`ScanGround\`에도 동일한 발 기준 게이트 적용
+3. **착지 직후 바로 다시 떨어짐**: 게이트에 오차 허용 범위가 없어 정상 착지 후 float 연산 오차로 발이 극미하게 낮게 나오는 순간까지 "미착지"로 오판 — \`CollisionPadding\`(0.02) 정도의 여유를 게이트에 반영해 해결. 이 여유값을 그대로 \`PlatformCatchTolerance\` 인스펙터 필드로 승격 — 값을 키우면 짧은 점프가 살짝 못 미쳐도 기존 self-hit depenetration(\`MinDepenetrationSpeed\`)이 자연스럽게 끌어올려주는 관대한 캐치존이 된다(사용자 요청, 실제 스냅 위치는 항상 콜라이더 진짜 윗면 그대로)
+
+**\`LadderState\` 마무리**
+
+- 사다리 그랩 중 드롭스루 취소 타이밍 버그: 공중에서 드롭스루 도중 사다리를 잡을 때 \`Enter()\`가 즉시 취소하면 아직 self-hit으로 겹친 상태라 그랩 위치까지 내려가야 할 캐릭터가 플랫폼 위로 다시 밀어올려짐 — 취소를 grab Lerp 종료 시점으로 미루되 \`cancelDropThroughAfterGrab\` 플래그로 공중 진입에만 한정(접지/GrapDown 진입까지 공유하면 두꺼운 발판에서 같은 버그 재발 — 최종 리뷰에서 발견)
+- 방향 전환이 매 프레임 계속 갱신돼 등반/연출 도중에도 캐릭터가 홱홱 돌아보던 문제 — GrapUp 트리거 순간 딱 한 번만 입력으로 방향을 확정하도록 3차 수정 끝에 정리
+- 사용하지 않던 \`PlayerMovementPhysics physics\` 의존성 제거
+
+**레벨 디자인 도구**
+
+- \`PlayerMovementData\` 인스펙터를 한글 라벨로 — 처음에 \`[InspectorName]\`을 썼는데 사용자가 "왜 한글로 안 보이지?"라고 물어서 확인해보니 이 애트리뷰트는 enum 멤버 전용, 일반 필드엔 효과 없음(공식 문서로 확인). \`Player.asmdef\`에 흡수되지 않도록 asmdef 없는 별도 \`Assets/Scripts/Editor/\` 폴더에 \`SerializedProperty\` + \`GUIContent\` 기반 커스텀 Editor로 재작성
+- Platform Jump Reach 디버그 기즈모 신규 추가: "제자리 점프로 실질적으로 캐치되는 최대 높이"를 참고선+색상(닿는 플랫폼 있으면 초록)+도달 위치 미리보기로 표시. 사용자 피드백 3라운드로 다듬음:
+  - OverlapBox로 한 지점만 얇게 검사하면 두꺼운 플랫폼 몸체에 스쳐 오탐지("min.y에 닿아도 올라가는 걸로 보임") — 콜라이더 진짜 윗면이 도달 범위 안인 것만 채택하도록 수정
+  - 정점 계산이 연속 포물선 공식을 쓰고 있어 실제 게임(FixedUpdate 이산 반정적 오일러 + ApexThreshold 기반 Apex Hang 스냅)보다 정점이 계통적으로 높게 나옴(이 프로젝트 기본값 기준 약 5% 차이) — "매칭이 살짝 안 맞다"는 사용자 지적으로 발견, \`SimulateDiscreteApex\`로 실제 물리를 한 틱씩 재현하도록 교체. 장애물 충돌 스캔도 같은 이산 궤적을 쓰도록 통합해 스캔-정점 간 기하 불일치까지 제거
+  - 사다리 위에서 점프할 때는 \`LadderJumpInitialVelocity\` 기준으로 자동 전환(런타임에 \`LadderState\` 활성 여부 확인)
+  - 이미 플랫폼 위에 서 있으면 기즈모를 그리지 않도록 처리
+
+**최종 리뷰 & 커밋**
+
+전체 브랜치(develop 대비 27커밋 + 미커밋분) Opus 최종 리뷰 — 요청한 4개 고위험 지점(게이트 일관성, 드롭스루 취소 분기 분리, 이산 시뮬레이션 충실도, 기즈모 필터 수식) 전부 정확, Critical/Important 0건. Minor(미사용 \`physics\` 의존성)만 정리 후 Ready to merge: Yes. 컴파일 의존성 순서를 고려해 4개 커밋으로 분리(self-hit 버그 수정 → LadderState 정리 → Platform Jump Reach 기즈모 → 인스펙터 커스텀 Editor). 무관해 보이는 씬/프리팹/ProjectSettings 변경분은 커밋 안 하고 그대로 둠.
+
+---
 `;
