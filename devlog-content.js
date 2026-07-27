@@ -1951,4 +1951,38 @@ v6에서 빠져 있던 Addressable 시스템과의 연결, 런타임 그룹 데�
 전체 브랜치(develop 대비 27커밋 + 미커밋분) Opus 최종 리뷰 — 요청한 4개 고위험 지점(게이트 일관성, 드롭스루 취소 분기 분리, 이산 시뮬레이션 충실도, 기즈모 필터 수식) 전부 정확, Critical/Important 0건. Minor(미사용 \`physics\` 의존성)만 정리 후 Ready to merge: Yes. 컴파일 의존성 순서를 고려해 4개 커밋으로 분리(self-hit 버그 수정 → LadderState 정리 → Platform Jump Reach 기즈모 → 인스펙터 커스텀 Editor). 무관해 보이는 씬/프리팹/ProjectSettings 변경분은 커밋 안 하고 그대로 둠.
 
 ---
+
+## 2026-07-27
+
+**\`feat/hj/land-debug\` → \`feat/hj/hard-land-fall-distance\` — Hard Land 디버그 시각화, 속도 기반에서 거리 기반으로 재설계 (둘 다 develop 머지 완료, PR #41/#42)**
+
+Hard Land(착지 시 하드 랜딩 연출) 발동 기준을 레벨 디자인 중 눈으로 확인할 수 있는 디버그 도구를 만들다가, 실측 중 근본 설계를 뒤집게 된 세션.
+
+**1차 시도 — 속도 임계값을 높이로 환산해 시각화 (\`feat/hj/land-debug\`)**
+
+- 기존 \`HardLandVelocityThreshold\`(속도)를 유지한 채, Edit 모드 기준선(자유낙하 공식으로 높이 역산)과 Play 모드 실시간 낙하속도 라벨을 추가
+- 연속 공식이 실제 이산 물리(FixedUpdate 반정적 오일러)와 어긋나는 문제 발견 → \`SimulateHardLandFall\`로 실제 낙하를 한 틱씩 재현하도록 전환, \`MaxFallSpeed\` 클램프도 시뮬레이션 자체에 통합
+- 최종 리뷰에서 Important 2건 발견: (1) 스펙이 주장한 "기존 값과 동치"가 실제 프로젝트 에셋(\`jumpHeight=3\`) 기준으로는 성립 안 함 (2) 종단속도 클램프가 걸리면 기준선과 실제 발동 높이가 최대 3배 어긋남 — 둘 다 수정 후 머지(PR #41)
+- 사용자가 실제 에디터에서 \`HardLandHeight\`를 12~13대로 올려보다가 **"조절이 안 되는 것 같다"**는 걸 감지 — 계산해보니 \`MaxFallSpeed\`가 만드는 물리적 상한이 5m 남짓이라, 그 이상은 아무리 높이를 올려도 효과가 없었음(속도 기반 판정의 구조적 한계)
+
+**2차 시도 — 판정 자체를 거리 기반으로 재설계 (\`feat/hj/hard-land-fall-distance\`)**
+
+- 웹 조사 결과 Minecraft 등 다수 게임이 "충돌 시점 속도"가 아니라 "실제 낙하 거리(최고점 - 착지점)"로 낙하 판정을 한다는 걸 확인 — 종단속도 캡이 있는 이상 속도 기반은 근본적으로 이 문제를 못 피함
+- 신규 \`PlayerFallTracker\`(\`PlatformDropThroughGate\`와 동일한 무-Tick 순수 서비스 패턴) 추가: \`FallState.Enter()\`가 낙하 시작 Y를 기록, \`LandState.Enter()\`가 착지 시 실제 하강 거리를 읽어 판정
+- \`PlayerMovementData\`에서 속도 기반 파생값(\`HardLandVelocityThreshold\`/\`HardLandEffectiveHeight\`/\`SimulateHardLandFall\`) 전부 삭제, \`HardLandHeight\`는 물리 공식과 무관한 순수 입력값으로 회귀 — 종단속도와 완전히 분리돼 원하는 어떤 높이든 설정 가능해짐
+- 최종 리뷰에서 진짜 게임플레이 버그 발견: \`LandState\`는 Fall뿐 아니라 Jump에서도 직접 진입 가능한데(낮은 턱으로 점프해 상승 중 재접지), 이 경로는 \`FallState.Enter()\`를 안 거쳐 몇 액션 전 낙하의 \`fallStartY\`가 그대로 재사용돼 작은 점프도 Hard Land로 오판되는 문제 — \`PlayerFallTracker.StopTracking()\` 추가, \`JumpState.Enter()\`에서 호출해 해결
+- 덤으로 발견된 완전히 무관한 버그도 같이 수정: Climb Mantle/Ladder GrapUp 배율 테스트가 EditMode에서 \`Rigidbody2D.MovePosition()\` 미반영(\`Physics2D.Simulate()\` 필요)으로 실패 + off-by-one(도착 프레임과 속도 정착 프레임 사이 한 틱 차이) — 라이브 진단 로그로 원인 확정, 프로덕션 코드(\`ClimbState\`/\`LadderState\`)는 무변경, 테스트 파일만 수정
+- 최종 353개 테스트 통과 확인 후 머지(PR #42)
+
+**\`feat/hj/status-overlay\` — 통합 상태/타이머 디버그 오버레이 (진행 중, 머지 대기)**
+
+Hard Land 작업 마무리 후 "플레이어 컨트롤러에 더 추가할 만한 디버그 도구"를 논의, 슬로프 각도 시각화는 제외하고 통합 오버레이만 진행.
+
+- \`PlayerJumpTimers\`/\`PlayerClimbTimers\`/\`PlayerPlatformDropTimers\`/\`PlayerLadderTimers\` 4개 클래스에 잔여시간 getter 추가(기존엔 \`CanJump()\` 같은 불리언 게이트만 공개, 숫자 자체는 private)
+- \`PlayerLifetimeScope\`에서 이 4개 Timer의 등록 방식을 자동 생성자 주입에서 \`runtimeMotor\`와 동일한 "팩토리 안에서 new + 캐싱 + RegisterInstance" 패턴으로 전환(Scene 뷰가 State들과 같은 인스턴스를 봐야 하므로) — 등록 순서(Tick 순서) 보존 여부가 핵심이라 최종 리뷰에서 base 대비 줄 단위 대조 + VContainer 패키지 소스까지 직접 읽어 팩토리 전환이 동작 차이를 안 만든다는 것까지 확인
+- Play 모드 Scene 뷰에 현재 상태 이름 + 5개 타이머 잔여시간을 플레이어 머리 위 라벨로 표시하는 \`DrawStatusOverlayGizmo\` 추가
+- 최종 리뷰 Minor 3건(오버레이 라벨이 Hard Land 실시간 라벨과 겹침, 타이머 2종 음수 클램프 테스트 누락, 테스트 하나가 암묵적 기본값에 의존) 전부 즉시 수정
+- 사용자가 전체 테스트 통과 확인 후, 별개로 Play 모드에서 점프 궤적 기즈모(흰색 곡선)가 아예 안 보이는 버그를 리포트 — 원인은 궤적 첫 레이 원점이 발밑(\`bounds.min.y\`)이라 Play 모드에서 캐릭터가 지면에 딱 붙어있으면 그 지면을 즉시 self-hit해 궤적이 시작하자마자 끊기는 것(Edit 모드에서는 배치 위치가 지면과 안 붙어있어 안 드러났음) — \`DrawClimbRaysGizmo\`와 동일한 0.02 오프셋 패턴으로 수정, 같은 브랜치에 포함
+
+---
 `;
