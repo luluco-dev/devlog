@@ -1985,4 +1985,25 @@ Hard Land 작업 마무리 후 "플레이어 컨트롤러에 더 추가할 만�
 - 사용자가 전체 테스트 통과 확인 후, 별개로 Play 모드에서 점프 궤적 기즈모(흰색 곡선)가 아예 안 보이는 버그를 리포트 — 원인은 궤적 첫 레이 원점이 발밑(\`bounds.min.y\`)이라 Play 모드에서 캐릭터가 지면에 딱 붙어있으면 그 지면을 즉시 self-hit해 궤적이 시작하자마자 끊기는 것(Edit 모드에서는 배치 위치가 지면과 안 붙어있어 안 드러났음) — \`DrawClimbRaysGizmo\`와 동일한 0.02 오프셋 패턴으로 수정, 같은 브랜치에 포함
 
 ---
+
+## 2026-07-28
+
+**\`feat/hj/lifetimescope-debug-split\` — \`PlayerLifetimeScope\`에서 디버그 기즈모를 \`PlayerDebugGizmos\`로 분리 (develop 머지 완료, PR #44)**
+
+\`PlayerLifetimeScope.cs\`가 700줄까지 커진 문제를 \`improve-codebase-architecture\` 스킬로 브레인스토밍. DI 배선(85줄)과 Scene 뷰 디버그 기즈모(13개 \`Draw*\` 메서드, 540줄 이상)가 한 파일에 섞여있고, 기즈모 콜백이 DI 인스턴스에 접근하려고 \`runtimeXxx\` 캐싱 필드 7개로 우회 배선을 해둔 게 근본 원인. "partial class로 파일만 쪼개기"와 "완전히 별도 컴포넌트로 분리" 두 방안을 저울질하다, 사용자가 "번거로워도 하는 게 좋지 않을까?"로 후자를 선택.
+
+- 신규 \`PlayerDebugGizmos\`(MonoBehaviour)에 13개 Draw* 메서드 + 헬퍼 전부 이관, \`[Inject] Construct(...)\`로 VContainer 정식 주입을 받게 하고 \`builder.RegisterComponentInHierarchy<PlayerDebugGizmos>()\`로 등록 — 기존 \`runtimeXxx\` 캐싱 배선 전부 삭제
+- Edit 모드에는 컨테이너 자체가 없어 \`[Inject]\`가 안 불린다는 제약 때문에, Edit 모드에서도 동작해야 하는 기즈모(Climb 높이 구간 등)를 위해 \`[SerializeField] PlayerLifetimeScope playerScope\` 참조 하나로 \`MovementData\`/\`BoxCollider\`/\`GroundLayer\`/\`PlatformLayer\`/\`Rb\` 5개 getter를 읽어오는 방식으로 해결
+- 사용자가 프리팹에 컴포넌트를 붙이고 Play 모드에 진입하자 \`VContainerException: No such registration of type: PlayerMovement\` 발생 — 원인 추적 결과, \`RegisterEntryPoint<PlayerMovement>(...)\` 등록에만 \`.AsSelf()\`가 빠져있던 기존 잠재 결함이었음(다른 모든 RegisterEntryPoint 호출은 \`.AsSelf()\`가 있음). 이전엔 \`PlayerLifetimeScope\`가 팩토리 람다의 로컬 변수를 직접 캐싱해서 컨테이너 resolve를 거친 적이 없어 안 드러났었는데, \`PlayerDebugGizmos\`의 \`[Inject] Construct\`가 처음으로 \`PlayerMovement\`를 컨테이너 경유로 resolve하려다 표면화됨 — \`.AsSelf()\` 한 줄 추가로 해결
+- 최종 2단계 리뷰(스펙 리뷰 서브에이전트 + 코드 품질 직접 검토) 통과, Critical/Important 0건
+
+**\`feat/hj/raycast-self-hit-helper\` — self-hit 라이캐스트 패딩 상수 공유 (develop 머지 대기)**
+
+위 브랜치 완료 후 이어서 진행한 후보 2. 이번 세션에만 self-hit 버그(레이 원점이 콜라이더 표면에 걸쳐 즉시 자기 자신을 히트하는 문제)가 \`DrawJumpArcGizmo\`/\`SimulateDiscreteApex\`/\`DrawClimbRaysGizmo\` 3곳에서 별도로 발견·수정됐는데, 원인과 고친 방식이 매번 100% 동일해서 코드리서치로 근본 원인을 조사.
+
+- \`PlayerMotor.cs\`는 이미 \`CollisionPadding = 0.02f\` 이름 있는 상수를 15곳 넘게 일관되게 참조해 이 문제가 프로덕션 코드에서는 한 번도 재발한 적이 없었던 반면, \`PlayerDebugGizmos.cs\`는 이 상수를 공유하지 않고 raw \`0.02f\` 리터럴을 그때그때 새로 박아넣어 반복 재발의 진원지였다는 걸 확인
+- 사용자와 논의 후 "레이캐스트를 감싸는 새 함수"가 아니라 "상수만 공유"로 범위 확정, 위치도 새 유틸리티 클래스가 아니라 "\`PlayerMotor\`에 그대로 두고 \`public\`으로만 노출"로 확정(이미 잘 도는 프로덕션 코드는 안 건드림)
+- \`PlayerMotor.CollisionPadding\`을 \`private\`→\`public\`으로 바꾸고, \`PlayerDebugGizmos.cs\`의 raw \`0.02f\` 6곳을 전부 참조로 교체 — 값은 그대로 0.02f라 동작 변화 없는 순수 리팩터. 계획이 워낙 작아 서브에이전트 없이 세션 내에서 바로 구현, 계획 대비 diff 직접 대조로 검증 완료
+
+---
 `;
