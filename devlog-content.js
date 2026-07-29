@@ -2033,4 +2033,29 @@ Hard Land 작업 마무리 후 "플레이어 컨트롤러에 더 추가할 만�
 - \`PlayerMotor.CollisionPadding\`을 \`private\`→\`public\`으로 바꾸고, \`PlayerDebugGizmos.cs\`의 raw \`0.02f\` 6곳을 전부 참조로 교체 — 값은 그대로 0.02f라 동작 변화 없는 순수 리팩터. 계획이 워낙 작아 서브에이전트 없이 세션 내에서 바로 구현, 계획 대비 diff 직접 대조로 검증 완료
 
 ---
+
+## 2026-07-30
+
+**\`proto/Square/animationtest\` — develop 코드 포팅**
+
+기존 \`develop\`의 재작성된 시스템(Core 어셈블리, Bloom 렌더링, VContainer 기반 Player)을 프로토타입 브랜치 \`proto/Square/animationtest\`로 옮기는 작업. "조사부터"로 시작해 단계별로 범위를 넓혀가며 진행:
+
+- \`Core.Rendering\`(Layered Bloom) 코드 그대로 가져오고, \`MapEditorTest\`→\`MapEditor\`로 리네임하면서 \`Editor/MapEditorWindow.cs\`만 develop 버전으로 교체(기존 \`Data/\`/\`Prefabs/\`는 \`git mv\`로 GUID 보존)
+- \`Assets/Scripts\` 전체를 develop 버전으로 완전 교체 — 기존 프로토타입 스크립트(Item/Platform/구 Player 이동)는 전부 폐기. 씬/프리팹 참조가 깨지는 건 사용자가 직접 수동으로 재배치하기로 확정
+- 누락된 의존성 설치: VContainer/UniTask/PrimeTween(패키지 매니페스트 + PrimeTween 로컬 tgz), \`CameraSettingsData\`/\`PlayerMovementData\` 및 \`GameEngine\`/\`CameraRig\`/\`Player\`/\`RootLifetimeScope\` 프리팹 4종 이식(\`Player.prefab\`은 GUID가 develop 것으로 바뀌어 기존 씬 참조가 깨지는 걸 사용자가 인지하고 승인)
+- \`RootLifetimeScope\`가 자동 스폰 안 되는 문제 → \`ProjectSettings.asset\`의 \`preloadedAssets\`에 \`VContainerSettings.asset\` 항목이 빠져있던 게 근본 원인으로 확인, 추가해서 해결
+- 안 쓰는 레거시 정리: DOTween(PrimeTween으로 이미 전환됨) 플러그인+세팅 삭제, Scripting Define Symbols에서 전 플랫폼 \`DOTWEEN\` 제거, Odin/Sirenix(gitignore된 빈 폴더로 확인) 제거, \`Spine Examples\`(데모 콘텐츠 736개 파일) 제거
+- 진행 중 예상 밖의 변경(예: \`Renderer2D.asset\`에서 RendererFeature/코어 셰이더 참조가 빠진 것처럼 보였던 것, Spine SkeletonData 스케일 값 변경)은 전부 커밋 전 사용자에게 먼저 확인 — 둘 다 의도된 것으로 확인 후 반영. 총 3개 커밋으로 정리, push는 사용자가 직접 진행
+
+**TwoWay 플랫폼 낙하 버그 — CompositeCollider2D의 \`bounds\`가 합쳐진 전체 AABB를 반환하는 함정**
+
+\`develop\`에서 테스트하다 발견: Ground와 같은 높이의 TwoWay 플랫폼으로 걸어서 넘어가면 서 있어야 할 자리에서 그대로 낙하. \`systematic-debugging\`으로 조사.
+
+- 처음엔 "두 콜라이더 높이가 실제로 다른가"를 의심했으나 사용자가 "타일맵이니 같은 높이가 맞다"고 정정, 재계산해보니 높이가 정말 같다면 기존 게이트 로직이 수학적으로 걸릴 이유가 없어서 가설을 X축 씸(별도 CompositeCollider2D 경계) 쪽으로 재조정
+- \`PlayerMotor.ScanGround()\`에 임시 진단 로그 추가 후 \`proto/Square/animationtest\`에서 재현 — 로그 결과 \`colliderTopY\`가 매 프레임 정확히 \`1.00000\`으로 고정, \`footY\`는 낙하 중 계속 변함(플레이어 위치와 4유닛 이상 차이). 근본 원인 확정: \`PlatformArrivalThreshold\`가 쓰던 \`collider.bounds.max.y\`가, Tilemap+CompositeCollider2D 구조에서 씬에 흩어진 모든 TwoWay 조각을 합친 전체 AABB를 반환 — 지금 밟으려는 로컬 조각과 무관하게 씬에서 제일 높은 조각 기준으로 문턱이 계산돼 정상적인 착지도 계속 미달 판정됐던 것
+- 코드에 이미 같은 함정을 경고하는 주석(\`ScanLedge\` 근처 — "bounds는 합쳐진 콜라이더에서 부정확하므로 금지")이 있었는데, \`PlatformArrivalThreshold\`에는 그 원칙이 빠져있었음
+- 수정: \`PlatformArrivalThreshold(Collider2D)\` → \`PlatformArrivalThreshold(float surfaceY)\`로 시그니처 변경, 호출부(\`ScanGround\`/\`ResolveVertical\`) 둘 다 \`hit.collider\` 대신 \`hit.point.y\`(레이-콜라이더 실제 교차점)를 넘기도록 수정. \`ResolveVertical\`의 self-hit 분기(645줄, \`hit.collider.bounds.max.y\`)는 같은 근본 문제를 안고 있지만 self-hit 특성상(distance≈0, \`hit.point\`가 원점 그대로라 신뢰 불가) 별도 설계가 필요해 이번 범위에서는 제외
+- \`proto/Square/animationtest\`에서 Play 모드로 수정 확인 후, 같은 diff를 \`develop\`에도 그대로 적용해 커밋(브랜치 전환 전 미커밋 변경사항은 stash로 분리 보관)
+
+---
 `;
