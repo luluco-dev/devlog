@@ -1986,6 +1986,33 @@ Hard Land 작업 마무리 후 "플레이어 컨트롤러에 더 추가할 만�
 
 ---
 
+## 2026-07-29
+
+**\`feat/hj/postprocessing-exclude\` — 레이어별 Bloom에 Scatter/Tint 추가 (Layered Bloom v2)**
+
+전날까지 레이어별 Intensity만 지원하던 커스텀 Bloom에, 아트에서 "Scatter(확산 반경)/Tint(색상)도 레이어별로 다르게 달라"는 요청이 들어와 브레인스토밍부터 다시 시작한 세션. 설계 도중 기존 구현의 숨은 결함 하나와, 구현 완료 후 Play 모드 실측에서 진짜 런타임 버그 하나를 추가로 발견해 잡았다.
+
+**브레인스토밍 — Scatter 의미 오류 발견 + A안(레이어별 독립 블러 체인) 채택**
+
+- 기존 \`_Scatter\`가 Downsample/Upsample(실제 블러 계산) 어디에도 관여하지 않고 Composite 패스에서 Tint/Intensity와 똑같이 단순 밝기 배율로만 쓰이고 있었다는 걸 발견 — 이름과 달리 번짐 반경에 전혀 영향을 못 주던 상태. 아트가 원하는 Scatter가 실제 번짐 반경이라는 걸 확인하고, Upsample 단계의 mip 누적 가중치로 의미를 재정의하기로 함
+- 레이어마다 다른 Scatter를 주려면 블러 자체를 레이어별로 분리해야 해서, 씬 전체를 대상으로 블러를 한 번만 돌리던 기존 구조를 버리고 엔트리(레이어 리스트 + \`defaultEntry\`)마다 완전히 독립된 Prefilter→Downsample→Upsample→Accumulate 체인을 돌리는 구조로 전환(A안). 비용은 엔트리 개수에 비례(O(L))해서 늘어남 — 실측 없이 안전하다고 단정하지 않고 후속 확인 항목으로 남김
+- 레이어 판별 기준을 Sorting Layer로 바꾸는 안을 검토했으나(2D 게임이라 더 자연스러워 보여서), 구간 선택 UI에 커스텀 PropertyDrawer+신규 Editor 어셈블리가 필요하다는 게 확인되면서(\`UnityEngine.SortingLayer\`가 어트리뷰트가 아니라 구조체라 직접 못 붙임 — 실제 컴파일 에러로 확인) 기각, 기존 LayerMask 유지로 확정(멀티 선택 가능, 비용도 O(L)로 배치와 무관하게 일정)
+- \`defaultEntry\`(리스트에 없는 나머지 전부)도 Intensity뿐 아니라 Scatter/Tint를 전부 갖도록 통합
+
+**구현 — subagent-driven-development로 6개 태스크**
+
+- Task 1~6: 데이터 모델(\`LayerBloomEntry\` — layerMask/intensity/scatter/tint), 레이어 색상 격리 셰이더/헬퍼, Composite 셰이더(Scatter를 Upsample로 이동 + Accumulate 패스 신설), 엔트리별 블러 체인(\`LayeredBloomBlurPass\` 전면 재작성 — 이번 작업의 핵심), RendererFeature 재조립까지 서브에이전트 dispatch + 태스크별 리뷰로 순차 진행. Task 5(블러 체인)에서 Important 1건(\`_TotalGlow\` 클리어가 \`clearBuffer\` 플래그 하나에만 의존 — Unsafe 패스에서 보장되는지 불확실) → 명시적 Raster 클리어 패스 추가로 수정
+- 전체 브랜치 최종 리뷰(opus)에서 Important 4건 발견, 한 번에 수정: (1) 격리 텍스처가 검정이 아니라 카메라 배경색으로 클리어됨 (2) 격리 셰이더에 Blend 상태가 없어 같은 레이어 겹친 스프라이트끼리 알파로 서로 지움 (3) \`SetRenderFunc\` 람다가 PassData 대신 루프 지역변수를 직접 캡처(Render Graph 안티패턴, v1 대비 퇴행) (4) 플랜 문서에 "신규 엔트리는 tint 기본값이 검정이라 intensity 있어도 안 보임" 같은 함정 안내 누락
+
+**Play 모드 검증 — 실제 런타임 버그 발견 및 수정**
+
+- 1차: Volume 값을 바꿔도 화면 반응 없음 + Play 모드 진입 시 \`SerializedObjectNotCreatableException\`(VolumeComponentEditor) 발생. URP 소스 직접 확인 결과 target이 null일 때 나는 예외로 확인됐고, 새 프로파일로 재현해봐도 그대로였다가 **Unity 에디터 재시작으로 해결** — 컴파일 에러를 거치며 남은 stale 에디터 세션 상태였을 뿐, 코드 결함 아니었음
+- 2차: 에디터 재시작 후에도 번짐 자체가 안 보임. Frame Debugger로 실측한 결과 파이프라인(격리→블러 6단계→합성)은 전부 정상 실행되는데, 격리 패스의 렌더타겟 미리보기가 완전히 검정이라는 걸 확인 — **근본 원인**: \`LayerColorIsolationPass\`가 override 머티리얼로 그리는데, override로 그리면 SpriteRenderer가 자동으로 넘겨주는 MaterialPropertyBlock(\`_MainTex\`/\`_Color\`)이 전달되지 않아 \`_Color\`가 항상 미설정(0,0,0,0)으로 남아 결과가 항상 새까맣게 나옴
+- override 머티리얼 사용을 완전히 제거(오브젝트가 자기 실제 머티리얼로 그려지게 변경)해서 해결 — 이 때문에 애초에 필요 없었던 \`ColorIsolationUnlit.shader\`와 \`isolationShader\` 배선 전체를 함께 삭제. 가벼운 리뷰(Ready to merge: Yes) 거친 뒤, 사용자가 Play 모드에서 레이어별 Intensity/Scatter/Tint가 각자 값대로, 나머지는 Default 값대로 정상 적용되는 것 확인
+- 브랜치 마무리는 코드만 남기기로 함 — 테스트용으로 만든 Volume/GameObject는 삭제, \`Renderer2D.asset\`의 RendererFeature 배선도 이 브랜치에서 빼고 실제 프로덕션 씬 적용은 별도 후속 브랜치에서 진행하기로 결정(사용자 직접 처리)
+
+---
+
 ## 2026-07-28
 
 **\`feat/hj/lifetimescope-debug-split\` — \`PlayerLifetimeScope\`에서 디버그 기즈모를 \`PlayerDebugGizmos\`로 분리 (develop 머지 완료, PR #44)**
