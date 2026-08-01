@@ -2058,4 +2058,36 @@ Hard Land 작업 마무리 후 "플레이어 컨트롤러에 더 추가할 만�
 - \`proto/Square/animationtest\`에서 Play 모드로 수정 확인 후, 같은 diff를 \`develop\`에도 그대로 적용해 커밋(브랜치 전환 전 미커밋 변경사항은 stash로 분리 보관)
 
 ---
+
+## 2026-08-02
+
+### 벽 코너 self-hit — ScanGround/ResolveVertical이 벽을 지면으로 오인하던 버그
+
+\`proto/Square/animationtest\`에서 점프 아치가 벽 코너 노치를 스치면 Climb 없이 벽을 타고 슬라이드업하거나, 점프 직후 곧바로 Land로 끊기는 현상 재현. Unity 레이캐스트는 origin이 이미 콜라이더 안(self-hit)이면 실제 표면이 아니라 \`distance=0, normal=-방향\`을 돌려줘서, 벽 코너에 발이 살짝 걸치면 \`ScanGround\`/\`ResolveVertical\`이 이걸 "걸을 수 있는 지면"으로 오채택했다.
+
+- \`PlayerMotor.VerifySelfHit(x, originY, bounds, probeDistance)\` 헬퍼 신규 — self-hit이 감지되면 원점을 캐릭터 중심 쪽으로 \`SelfHitVerifyNudge\`(기본 0.2, 최초 0.05는 실제 캐릭터 스케일 기준 노치를 못 벗어나 상향)만큼 밀어 재검증, 그래도 self-hit이면 진짜 파묻힘으로, 아니면 우발적 겹침으로 판단(Celeste의 corner correction과 동일한 철학) — \`ScanGround\`/\`ResolveVertical\` 둘 다 적용
+- 최종 리뷰에서 추가 발견: 재검증이 "뭐든 닿으면 통과"였어서, 벽 옆 실제 지면 위에 서 있을 때 그 지면에 닿아버려 벽 self-hit을 오채택하는 구멍이 있었음 — \`verifyHit.distance <= 0.0001f\`(밀어도 여전히 self-hit이어야 함) 조건 추가로 마감
+- 부수적으로 발견한 별개 결함: self-hit일 때 \`hit.point\`가 실제 표면이 아니라 원점 그대로라, \`PlatformArrivalThreshold\` 판정에 그 값을 그대로 쓰면 안 됨 — \`ScanGround\`/\`ResolveVertical\` 둘 다 self-hit이면 \`hit.collider.bounds.max.y\`로 대체하도록 정리(이 계열 버그로 두 번째 확인, 위 \`TwoWay 플랫폼\` 항목과 같은 원인 패턴)
+
+### JumpState 착지 오탐지 디바운스
+
+self-hit이 \`VerifySelfHit\`를 뚫고 드물게 새는 잔여 케이스 조사 중, \`IsGrounded\`가 단 1~2틱만 순간적으로 튀어도 \`JumpState\`가 즉시 착지로 확정해버린다는 걸 확인(점프 누르자마자 \`낙하거리=0.00, velocity.y=0.00\`으로 Land가 발동하는 로그로 실측).
+
+- \`airborneTimer\` 필드 추가 — \`hasLeftGround\`가 true가 된 시점부터 누적, \`isGenuineLanding\` 판정에 \`airborneTimer >= MinAirborneTimeBeforeLanding\`(신규 인스펙터 값, 기본 0.05초) 조건 추가
+- 진짜 self-hit 오탐지와 정상적인 초고속 재착지가 최소 2틱(0.04초)이라는 동일한 타이밍이라 시간만으론 구분 불가 — 3틱(0.06초)까지 지연시키기로 결정(사람이 체감 못 하는 차이로 판단), 기존 2틱 기준 회귀 테스트 2개도 3틱으로 조정
+- 최종 리뷰에서 발견: 원웨이 플랫폼 통과 테스트가 2틱만 써서 이 디바운스 하나만으로 이미 무효화(vacuous)돼있었음 — 나머지 두 테스트와 동일하게 틱 하나 추가해 원래 검증하려던 조건이 다시 실제 판별 기준이 되도록 수정
+
+### FindWallHit — 인덱스 순서가 아니라 최단 거리 레이를 골라야 함
+
+Climb Hang 후 드롭+앞 방향키 시 벽 안쪽으로 파고드는 현상을 사용자가 직접 진단(Hang 위치 자체는 문제없음 확인, \`ClimbWallGap\`을 0으로 낮춰도 재현되어 그쪽은 배제, \`WallRayCount\`를 조절하면 오히려 더 파고드는 경우가 생기는 걸 관찰 — 이 관찰이 결정적 단서).
+
+- \`PlayerMotor.FindWallHit()\`가 여러 벽 레이 중 각도 조건을 만족하는 **첫 번째** 히트를 그대로 반환하고 있었음(\`ScanGround\`/\`FindCeilingHit\`는 이미 최단 거리를 고르는데 여기만 다른 패턴) — 벽이 높이에 따라 굴곡져 있으면 먼저 검사되는 레이가 먼 지점을 잡아 그 거리로 클램프해버려, 실제로 더 가까운 굴곡을 뚫고 들어갈 수 있었음. \`WallRayCount\`를 바꾸면 어느 레이가 "처음" 걸리는지도 바뀌니 증상이 뒤집히던 것과 정확히 일치
+- \`ScanGround\`/\`FindCeilingHit\`와 동일한 "전체 레이 중 최단 거리" 패턴으로 통일. \`ScanWall\`/\`ClampHorizontal\` 호출부는 변경 없음
+
+### develop 반영 및 proto 재적용
+
+- 위 세 수정을 \`fix/hj/wall-corner-selfhit-and-jump-debounce\` 브랜치(\`develop\`에서 분기)로 옮겨 PR #48로 머지
+- \`proto/Square/animationtest\`는 로컬 전용 커밋 7개를 되돌리고, \`develop\`의 머지 커밋 하나만 cherry-pick — 두 브랜치가 오래전에 갈라져 전체 브랜치 머지 시 \`add/add\` 충돌이 수십 건 발생해(Addressables, Player 프리팹 구조 등 서로 무관하게 새로 추가된 파일들) 즉시 중단하고 이 방식으로 전환
+
+---
 `;
