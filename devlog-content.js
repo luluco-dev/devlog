@@ -2090,4 +2090,35 @@ Climb Hang 후 드롭+앞 방향키 시 벽 안쪽으로 파고드는 현상을 
 - \`proto/Square/animationtest\`는 로컬 전용 커밋 7개를 되돌리고, \`develop\`의 머지 커밋 하나만 cherry-pick — 두 브랜치가 오래전에 갈라져 전체 브랜치 머지 시 \`add/add\` 충돌이 수십 건 발생해(Addressables, Player 프리팹 구조 등 서로 무관하게 새로 추가된 파일들) 즉시 중단하고 이 방식으로 전환
 
 ---
+
+## 2026-08-04
+
+**사다리 GrapUp 점프 진입 버그 — 공중에서 이미 top을 넘은 경우 매달림 대신 즉시 GrapUp**
+
+밧줄을 오르던 중 점프해서 GrapUp 트리거 지점(사다리 top 근처)에 몸이 먼저 도달하면, 착지가 아니라 공중 매달림(JumpToGrap)이 발동해 오히려 아래로 끌려 내려가는 현상.
+
+- \`LadderState.Enter()\`의 공중 진입 분기는 항상 \`grabEndPos = Mathf.Min(현재Y, ladderTop-Offset)\`로 매달림 목표를 잡는데, 이미 그 기준보다 높이 뛰어오른 경우 이 계산이 오히려 아래로 끌어내리는 값이 됨
+- \`OnFixedUpdate\`에만 있던 GrapUp 트리거 로직(그랩존 + 위 입력 + 머리가 사다리 top+padding 위)을 \`BeginGrapUpExit()\`로 분리해 \`Enter()\`에서도 같은 조건을 먼저 검사 — 만족하면 매달림 없이 곧바로 GrapUp 이탈 시작
+- GrapUp 종료 후 조작권 반환 지연(애니메이션 길이만큼 입력 잠금) 이슈도 같이 논의됐으나, 애니메이션이 끝까지 재생돼야 한다는 우선순위로 이번 스코프에서는 보류
+
+**플랫폼 낙하 버그 — 레거시 전체-맵 타일맵과 발판 콜라이더 중복**
+
+Unity MCP를 씬에 연동해 "BoxCollider2D를 붙였는데도 가끔 바닥을 뚫고 떨어진다"는 버그를 실측 조사. Play 모드 반복 재현 + 콘솔 로그/레이캐스트 질의로 systematic-debugging 진행.
+
+- 진단 로그를 상태 전환 시점(1회성)에만 남기도록 배치해 노이즈를 줄이자 GrapUp 완료 직후 3번 연속 동일 위치에서 True/True/False로 접지 판정이 갈리는 결정적 증거 확보
+- 근본 원인: 숨겨진 \`HalfGround_TwoWay\` 타일맵(TilemapCollider2D)의 실제 타일이 수동 배치한 \`TileMap_WoodFloor_2_1 (2)/(3)\` BoxCollider2D와 정확히 사다리 착지 지점(X=59.5)에서 겹침 — 모든 GrapUp이 이 좌표로 착지하므로 매번 이 취약한 이중 콜라이더 지점을 밟게 됨
+- 사용자가 \`HalfGround_One/Two/Etc/Etc(1)\` 등 다른 레거시 타일맵을 다시 켜자 동일 증상 재현 — 조사 결과 \`Etc\`만 \`CompositeCollider2D\`가 실제로 활성화(\`usedByComposite=true\`, \`pathCount=1\`)돼 있었고, 이 타일맵이 맵 전체(X: -24~114)를 덮는 초대형 블록아웃이라 \`PlayerMotor.ScanGround()\`의 self-hit 폴백(\`hit.collider.bounds.max.y\`)이 로컬 표면이 아니라 전역 AABB를 리턴하는 기존 함정(\`CompositeCollider2D.bounds\`)까지 겹쳐 증상이 더 심해짐
+- 해결: 해당 구간 타일맵을 개별 BoxCollider2D 프리팹(\`TileMap_Rope_1_0\`/\`2_0\`, \`TileMap_WoodFloor_2_0\`/\`2_1\`)으로 교체, 레거시 \`HalfGround_*\` 오브젝트들은 비활성 상태로 유지
+
+**GrapDown/JumpToGrap 이동 속도 배율 추가**
+
+GrapUp에는 \`LadderGrabUpMoveSpeedMultiplier\`(위치 이동만 단축, 애니메이션 길이는 그대로)가 있는데 GrapDown/JumpToGrap 쪽엔 대응하는 배율이 없던 걸 발견해 대칭으로 추가.
+
+- \`PlayerMovementData\`에 \`LadderGrabDownMoveSpeedMultiplier\`(기본 1) 신규, \`LadderState\`의 \`grabDuration\`(애니메이션 길이 기준, 그랩 해제 판정)과 \`grabMoveDuration\`(\`grabDuration\`/배율, 위치 Lerp 전용)을 GrapUp의 \`exitDuration\`/\`exitMoveDuration\`과 동일 패턴으로 분리
+
+**develop 반영**
+
+- 위 세 건을 각각 \`feat/hj/ladder-jump-grapup-fix\`, \`feat/hj/ladder-jump-grapup-fix\`(플랫폼 콜라이더 fix는 proto에서 씬/프리팹만 직접 커밋), \`feat/hj/ladder-grabdown-move-speed\` 브랜치로 develop에서 분기해 선별 복사 후 로컬 커밋 — push/merge는 이번에도 사용자가 GitHub Desktop으로 직접 진행(로컬 브랜치 생성 직후 develop이 fast-forward + push되는 패턴이 두 번 반복 관찰됨)
+
+---
 `;
