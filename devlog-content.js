@@ -2121,4 +2121,20 @@ GrapUp에는 \`LadderGrabUpMoveSpeedMultiplier\`(위치 이동만 단축, 애니
 - 위 세 건을 각각 \`feat/hj/ladder-jump-grapup-fix\`, \`feat/hj/ladder-jump-grapup-fix\`(플랫폼 콜라이더 fix는 proto에서 씬/프리팹만 직접 커밋), \`feat/hj/ladder-grabdown-move-speed\` 브랜치로 develop에서 분기해 선별 복사 후 로컬 커밋 — push/merge는 이번에도 사용자가 GitHub Desktop으로 직접 진행(로컬 브랜치 생성 직후 develop이 fast-forward + push되는 패턴이 두 번 반복 관찰됨)
 
 ---
+
+## 2026-08-05
+
+**\`feat/hj/climb-offset-separation\` — 낮은 턱 Climb 오발동 버그 수정 (develop 머지, PR #50)**
+
+브레인스토밍 단계에서 원래 실측 버그("짧은 턱에서도 Climb 발동")가 "높은 곳에서 낙하 중 도달 불가능한 러지 그랩"으로 잘못 재해석돼, 그 반대 축(\`ClimbMaxLedgeReachHeight\`, 최대 도달거리 게이트)으로 구현·리뷰까지 완료됐다가 사용자가 스크린샷으로 실제 버그(1타일 짧은 턱)를 보여주며 그런 버그는 관찰한 적 없다고 확인 — 해당 게이트 전체를 되돌리고(커밋 f8b340e) 브레인스토밍부터 재시작.
+
+- 실제 요구사항으로 \`ClimbMinLedgeHeight\`(최소 턱 높이 게이트, \`ScanLedge\` 5번째 게이트) 설계·구현 — 판정 극성이 반대(닿으면 차단)라 되돌린 게이트와 달리 기존 양성 테스트를 하나도 건드리지 않고 통과
+- 부수적으로 \`climbHandHeightOffset\`/\`climbHeadHeightOffset\`이 콜라이더 상단을 넘지 않도록 런타임 클램프(\`Mathf.Min(..., bounds.max.y)\`) 추가 — 계산 순서가 중요(머리 먼저 클램프, 손은 그 결과값에 종속)해 손이 머리 위로 튀는 걸 구조적으로 방지
+- 구현 중 테스트 지오메트리 self-hit 함정을 두 번 연속 발견: 지면 픽스처 폭이 왼쪽 벽 감지 레이 원점까지 덮어 오탐지 → 폭 축소로 수정했더니 이번엔 오른쪽 벽 감지의 4개 샘플 높이(\`FindWallHit\`, \`WallRayCount\` 등분)와도 겹쳐 있었음 — 둘 다 방향이 우연히 실제 벽과 같아 Assert는 통과했지만 게이트 자체는 검증하지 못하고 있었음, 재검토로 발견해 정확한 좌표로 재배치
+- 최종 브랜치 리뷰(opus)에서 Critical 1건 발견: 실제 \`PlayerMovementData.asset\` 값(손 2.55/머리 2.9)이 콜라이더 실제 키(스케일 1 기준 1.7)를 초과해, 새 클램프와 결합하면 손=머리로 붕괴돼 Climb이 완전히 비활성화되는 상태로 머지될 뻔함 — \`animationtest\` 브랜치의 예정 스케일(1.5, 콜라이더 키 2.55)을 기준으로 테스트 검증 비율을 그대로 스케일한 값(손 2.1/머리 2.475)으로 재조정, Play 모드 실측 확인 후 커밋
+- Important/Minor 9건(사다리 GrapUp 테스트가 \`Physics2D.Simulate\` 없이 우연히 통과하던 문제, doc 주석 2건 불일치, 기즈모 CollisionPadding 누락/중복 레이캐스트, 테스트 여유 부족 등) 한 번에 수정 후 스코프 재검토로 전부 addressed 확인 — 수정 커밋 하나에서 회귀 테스트 하나가 또 self-hit 아닌 다른 이유(벽 높이 부족)로 잘못된 걸 잡아 재수정
+- 부수적으로 발견한 무관한 기존 회귀(\`LadderStateTests\` 5개, 이전 사다리 커밋이 추가한 \`LadderState.Enter()\`의 "그랩존 진입 시점에 이미 GrapUp 트리거 조건 충족 → 즉시 GrapUp" 분기와 기존 테스트 전제가 충돌)도 사용자 요청으로 같이 수정(삭제 대신 재설계 — 트리거 방식과 무관한 검증은 새 분기를 그대로 이용하도록 재설계, 등반 중 트리거를 검증하는 테스트는 \`Physics2D.Simulate\` 보강)
+- \`develop\` 머지(PR #50) 후 \`proto/Square/animationtest\`에 동일 변경 cherry-pick — \`PlayerMovementData.asset\`은 자동 병합(값은 develop 쪽 유지: animationtest 원래 값 2.55/2.9를 그대로 쓰면 스케일 1.5 기준으로도 동일한 붕괴 버그가 재현돼 폐기), 테스트용으로 만든 씬 변경(\`PlayerTest.unity\`)은 animationtest에 해당 씬 자체가 없어 제외
+
+---
 `;
